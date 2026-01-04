@@ -1,0 +1,147 @@
+{
+  "en": {
+    "message": {
+      "search": {
+        "contacts": "Search contacts",
+        "messages": "Search messages",
+        "results": "Search results",
+        "input": "Search"
+      },
+      "login": {
+        "welcome": "Welcome to the login page",
+        "subtitle": "Please enter your credentials to login",
+        "username": "Username",
+        "password": "Password",
+        "remember": "Remember me",
+        "forgot": "Forgot password?",
+        "signin": "Sign in",
+        "reset": "Reset password",
+        "back": "Back to login",
+        "code": "Code",
+        "password_confirmation": "Confirm password"
+      },
+      "notification": {
+        "interview": "Interview",
+        "event": "Event",
+        "alert": "Alert"
+      }
+    },
+    "validations": {
+      "required": "This field is required",
+      "email": "Please enter a valid email address",
+      "confirmed": "The passwords do not match",
+      "password_confirmation": "The passwords do not match"
+    }
+  },
+  "br": {
+    "message": {
+      "search": {
+        "contacts": "Contatos",
+        "messages": "Mensagens",
+        "results": "Resultados",
+        "input": "Pesquisar"
+      },
+      "login": {
+        "welcome": "Bem-vindo de volta",
+        "subtitle": "Por favor, faça login para continuar",
+        "username": "Nome de usuário",
+        "password": "Senha",
+        "remember": "Lembrar de mim",
+        "forgot": "Esqueceu a senha?",
+        "signin": "Entrar",
+        "reset": "Redefinir senha",
+        "back": "Voltar",
+        "code": "Código de verificação",
+        "password_confirmation": "Confirmação de senha",
+        "logout": "Sair"
+      },
+      "notification": {
+        "interview": "Entrevista",
+        "event": "Evento",
+        "alert": "Alerta"
+      }
+    },
+    "validations": {
+      "required": "O campo {field} é obrigatório",
+      "email": "O campo {field} deve ser um e-mail válido",
+      "confirmed": "As senhas precisam ser iguais",
+      "password_confirmation": "O campo {field} deve ser igual ao campo Senha"
+    }
+  },
+  "de": {
+    "message": {
+      "search": {
+        "contacts": "Kontakte",
+        "messages": "Nachrichten",
+        "results": "Ergebnisse",
+        "input": "Suche"
+      },
+      "login": {
+        "welcome": "Willkommen zurück",
+        "subtitle": "Bitte melden Sie sich an, um fortzufahren",
+        "username": "Benutzername",
+        "password": "Passwort",
+        "remember": "Angemeldet bleiben",
+        "forgot": "Passwort vergessen?",
+        "signin": "Anmelden",
+        "reset": "Passwort zurücksetzen",
+        "back": "Zurück",
+        "code": "Verifizierungscode",
+        "password_confirmation": "Passwort bestätigen",
+        "logout": "Abmelden"
+      },
+      "notification": {
+        "interview": "Interview",
+        "event": "Veranstaltung",
+        "alert": "Alarm"
+      }
+    },
+    "validations": {
+      "required": "Das Feld {field} ist erforderlich",
+      "email": "Das Feld {field} muss eine gültige E-Mail-Adresse sein",
+      "confirmed": "Die Passwörter müssen übereinstimmen",
+      "password_confirmation": "Das Feld {field} muss dem Feld Passwort entsprechen"
+    }
+  },
+  "ru": {
+    "message": {
+      "search": {
+        "contacts": "Контакты",
+        "messages": "Сообщения",
+        "results": "Результаты",
+        "input": "Поиск"
+      },
+      "login": {
+        "welcome": "Добро пожаловать",
+        "subtitle": "Пожалуйста, войдите в систему, чтобы продолжить",
+        "username": "Имя пользователя",
+        "password": "Пароль",
+        "remember": "Запомнить меня",
+        "forgot": "Забыли пароль?",
+        "signin": "Войти",
+        "reset": "Сбросить пароль",
+        "back": "Назад",
+        "code": "Код подтверждения",
+        "password_confirmation": "Подтверждение пароля",
+        "logout": "Выйти"
+      },
+      "notification": {
+        "interview": "Интервью",
+        "event": "Событие",
+        "alert": "Оповещение"
+      }
+    },
+    "validations": {
+      "required": "Поле {field} обязательно для заполнения",
+      "email": "Поле {field} должно быть действительным адресом электронной почты",
+      "confirmed": "Пароли должны совпадать",
+      "password_confirmation": "Поле {field} должно соответствовать полю Пароль"
+    }
+  },
+  "status": {
+    "online": "Online",
+    "offline": "Offline",
+    "away": "Away",
+    "busy": "Busy"
+  }
+}

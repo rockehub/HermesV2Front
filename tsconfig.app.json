@@ -1,0 +1,23 @@
+{
+  "extends": "@vue/tsconfig/tsconfig.dom.json",
+  "include": ["env.d.ts", "src/**/*", "src/**/*.vue", "src/bin/**/*.ts", "src/components.d.ts"],
+  "exclude": ["src/**/__tests__/*"],
+  "compilerOptions": {
+    "module": "NodeNext",
+    "composite": true,
+    "declaration": true,
+    "declarationMap": true,
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@W/*": ["./src/bin/platform/workflow/*"]
+    },
+    "types": [
+      "vite/client",  // Se estiver usando o Vite
+      "src/components.d.ts"  // Adicione o caminho do seu arquivo .d.ts aqui
+    ]
+  },
+
+}
