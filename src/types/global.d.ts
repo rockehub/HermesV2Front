@@ -1,16 +1,7 @@
 import {menuItems} from "@/helpers/extensionLoader/extension-loader";
 import {useBreakpoints} from "@/stores/breakpoints";
-import Echo from "laravel-echo";
 import $axios from "@/helpers/integration/integration";
 import {type Component} from "vue";
-
-declare global {
-    interface Window {
-        Pusher: any;
-        Echo: any;
-
-    }
-}
 
 
 declare module '@vue/runtime-core' {

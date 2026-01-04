@@ -3,10 +3,7 @@ import {createApp} from 'vue';
 import App from './App.vue';
 import '@/assets/css/style.css';
 import notification from "@/helpers/utils/notification";
-import vueClickOutsideElement from 'vue-click-outside-element';
-import vueDebounce, {type PluginConfig} from 'vue-debounce';
 import {bootPlugins, menuItems, registerPlugins} from "@/helpers/extensionLoader/extension-loader";
-import JitsiMeeting from "@jitsi/vue-sdk";
 import {configure, defineRule} from 'vee-validate';
 import {all} from '@vee-validate/rules';
 import {localize} from '@vee-validate/i18n';
@@ -17,7 +14,7 @@ import whenAuthenticatedRunner from "@/classes/initialization/auth"
 import integration from "@/helpers/integration/integration";
 import router from "@/helpers/routes/main";
 
-import 'material-icons/iconfont/material-icons.css';
+// import 'material-icons/iconfont/material-icons.css';
 // import websocket from "@/helpers/integration/websocket";
 // import Pusher from "pusher-js";
 import clickAway from "@/helpers/directives/ClickAway";
@@ -42,16 +39,13 @@ const initApp = async () => {
 
     app.use(router);
     app.use(pinia);
-    app.use(JitsiMeeting)
     app.use(localizationStore.i18n);
     app.use(integration);
     // app.use(websocket);
     app.use(whenAuthenticatedRunner)
-    app.use(inactivityPlugin, {duration: 900000});
+    app.use(inactivityPlugin, {duration: 900000} as any);
     app.directive('click-away', clickAway);
-    app.use<PluginConfig>(vueDebounce, {lock: true, defaultTime: '400ms', listenTo: 'keyup'});
 
-    app.use(vueClickOutsideElement);
     app.config.globalProperties.$toast = notification;
     app.config.globalProperties.$menu = menuItems;
 

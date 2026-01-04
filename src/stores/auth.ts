@@ -5,7 +5,6 @@ import jwt_decode from "jwt-decode";
 import {$axios} from "@/helpers/integration/integration";
 import type {Credentials, ResetPassword, Token, User} from "@/helpers/interfaces/IAuth";
 import notification from "@/helpers/utils/notification";
-import {SynomSafeBox} from "@/helpers/utils/SynomSafeBox";
 
 export const useAuthStore = defineStore("auth", () => {
     const token = useStorage<string | null>("token", null);
@@ -28,17 +27,10 @@ export const useAuthStore = defineStore("auth", () => {
 
     async function login(credentials: Credentials) {
         try {
-            let publicKey;
-            if (!(await SynomSafeBox.hasKey("privateKey"))) {
-                publicKey = await SynomSafeBox.generateKeysForUser();
-            } else {
-                publicKey = JSON.parse(await SynomSafeBox.retrieveKey("publicKey"));
-            }
 
             const response = await $axios.post("/login", {
                 username: credentials.username,
                 password: credentials.password,
-                // publicKey,
             });
 
 
