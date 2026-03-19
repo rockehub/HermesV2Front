@@ -6,6 +6,7 @@ import { WidgetAreaWidget } from '@/bin/platform/dashboard/components/widgetArea
 import { WelcomeWidget } from '@/bin/platform/dashboard/components/welcomeWidget/WelcomeWidget'
 import { pt } from '@/bin/platform/dashboard/lang/pt/lang'
 import type { MenuItem } from '@/types/global'
+import { DynamicChartWidget } from '@/bin/platform/dashboard/components/dynamicChartWidget/DynamicChartWidget'
 
 export default class DashboardPlugin extends ExtensionBase {
   name = 'dashboard'
@@ -13,7 +14,8 @@ export default class DashboardPlugin extends ExtensionBase {
   globalWidgets = [
     Divisor,
     WidgetAreaWidget,
-    WelcomeWidget
+    WelcomeWidget,
+    DynamicChartWidget
   ]
   routes = [
     {

@@ -14,6 +14,12 @@
   @apply xl:[--margin-x:2.5rem];
 }
 
+/* Menu expandido: alarga a sidebar primária e a secundária */
+.menu-expanded {
+  --main-sidebar-width: 12rem;
+  --sidebar-panel-min-width: 190px;
+}
+
 .is-sidebar-open {
   @apply xl:[--margin-x:1.5rem];
 }

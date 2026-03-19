@@ -1,11 +1,22 @@
 import type { SearchItem } from '@/types/global'
 
+type TaggedSearchItem = SearchItem & { _tag?: string }
 
-const registry: SearchItem[] = []
+const registry: TaggedSearchItem[] = []
 
-export function registerSearchItem(item: SearchItem) {
-  if (registry.filter(existingItem => existingItem.name === item.name).length === 0) {
-    registry.push(item)
+export function registerSearchItem(item: SearchItem, tag?: string) {
+  const idx = registry.findIndex(e => e.name === item.name)
+  const entry: TaggedSearchItem = tag ? { ...item, _tag: tag } : item
+  if (idx === -1) {
+    registry.push(entry)
+  } else {
+    registry[idx] = entry
+  }
+}
+
+export function unregisterSearchItemsByTag(tag: string) {
+  for (let i = registry.length - 1; i >= 0; i--) {
+    if (registry[i]._tag === tag) registry.splice(i, 1)
   }
 }
 

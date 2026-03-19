@@ -19,8 +19,12 @@ const credentials = ref({
 async function login() {
   globalState.setReady(false);
   try {
-    await authenticator.login(credentials.value);
-    await router.push({name: 'dashboard'});
+    const result = await authenticator.login(credentials.value);
+    if (result.requiresTenantSelection) {
+      await router.push({ name: 'select-tenant' });
+    } else {
+      await router.push({ name: 'dashboard' });
+    }
   } finally {
     globalState.setReady(true);
   }

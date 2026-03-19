@@ -3,6 +3,7 @@ import {routes as defaultRoutes} from "@/helpers/routes/routes";
 import {pluginsLoaded, routes} from "@/helpers/extensionLoader/extension-loader"
 import {useAuthStore} from "@/stores/auth";
 import {usePluginManager} from "@/helpers/extensionLoader/usePluginManager";
+import {hasRole} from "@/helpers/rbac/checks/hasRole";
 import {watch} from "vue";
 
 
@@ -83,6 +84,11 @@ router.beforeEach(async (to, from, next) => {
                 });
             }
         }
+    }
+
+    // Check if route requires specific roles
+    if (to.meta.roles && !hasRole(to.meta.roles as string[])) {
+        return guardedNext({ name: 'dashboard' });
     }
 
     // Check if route should redirect authenticated users away

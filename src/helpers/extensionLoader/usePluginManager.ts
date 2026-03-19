@@ -92,16 +92,12 @@ export function usePluginManager() {
     });
 
     const findWidgetByName = (name: string): WidgetBase => {
-        return allWidgets.value.find((widget) => widget.name === name);
-    };
-
-    const mergeConfiguration = (widget: WidgetBase) => {
-        if (isConfigurable(widget)) {
-            return [...widget.configuration, ...widget.widgetConfiguration]
-        } else {
-            return []
-        }
+      return allWidgets.value.find((widget) => widget.name === name)
     }
+
+  const mergeConfiguration = (widget: WidgetBase & Configurable) => {
+    return [...widget.configuration, ...(widget.widgetConfiguration ?? [])]
+  }
 
     // Return all methods and data
     return {

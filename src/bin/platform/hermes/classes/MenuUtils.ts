@@ -1,11 +1,23 @@
 import { $axios } from '@/helpers/integration/integration'
 
-export const findMenu = async (parent?: string) => {
-  const url  = parent != null ? `/menu/${parent}` : '/menu'
+export interface HermesMenuItem {
+  name: string
+  icon: { icon: string; type: string }
+  params: { cockpit: string; sub?: string }
+  label: string
+  displayName: string
+  entityName: string
+  color?: string
+  hasChildren: boolean
+}
+
+export const findMenu = async (parent?: string): Promise<HermesMenuItem[]> => {
+  const url = parent != null ? `api/v1/menu/${parent}` : 'api/v1/menu'
   const response = await $axios.get(url)
-  let items =  response.data
-  items = items.map((item) => {
-    const hasParent = item.parent;
+  const items = response.data.data
+
+  return items.map((item: any) => {
+    const hasParent = item.parent
 
     return {
       name: 'cockpit',
@@ -17,10 +29,11 @@ export const findMenu = async (parent?: string) => {
         cockpit: hasParent ? item.parent.toLowerCase() : item.name.toLowerCase(),
         ...(hasParent && { sub: item.name.toLowerCase() })
       },
-      label: item.name
-    };
-  });
-
-  return items;
-
+      label: item.displayName || item.name,
+      displayName: item.displayName || item.name,
+      entityName: item.name,
+      color: item.color ?? undefined,
+      hasChildren: item.hasChildren ?? false
+    } satisfies HermesMenuItem
+  })
 }

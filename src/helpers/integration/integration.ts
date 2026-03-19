@@ -1,5 +1,6 @@
 import axios, {type AxiosInstance, type AxiosRequestConfig, type AxiosResponse} from 'axios';
 import { useAuthStore } from '@/stores/stores';
+import { useTenantStore } from '@/stores/tenantStore';
 import router from '@/helpers/routes/main';
 // import {$socket} from "@/helpers/integration/websocket";
 
@@ -18,14 +19,14 @@ export default {
         });
 
         axiosInstance.interceptors.request.use(async (config: any) => {
-            const auth= useAuthStore();
+            const auth = useAuthStore();
+            const tenant = useTenantStore();
             if (auth.token) {
                 config.headers.Authorization = `Bearer ${auth.token}`;
             }
-            if (auth?.user?.tenantId){
-                config.headers['X-Tenant-ID'] = auth.user.tenantId
+            if (tenant.currentTenantId) {
+                config.headers['X-Tenant-Id'] = tenant.currentTenantId;
             }
-
             return config;
         });
 

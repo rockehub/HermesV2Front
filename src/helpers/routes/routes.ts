@@ -2,6 +2,7 @@ import {type RouteRecordRaw } from "vue-router";
 
 //pages
 import Login from "@/pages/Login/index.vue";
+import TenantSelector from "@/pages/Login/TenantSelector.vue";
 
 
 //components
@@ -28,6 +29,12 @@ import LoginForm from "@/components/login/LoginForm.vue";
             }
 
         ]
+    },
+    {
+        path: '/select-tenant',
+        name: 'select-tenant',
+        component: TenantSelector,
+        meta: { noAuth: true }
     },
     {name: 'settings', path: '/settings', component: HelloWorld, meta: {auth: true}},
     // {name:'chat', path: '/chat', component: Chat, meta: {auth: true}},

@@ -18,7 +18,7 @@
         <em class="fa-solid fa-save" v-else></em>
       </button>
     </div>
-    <ModalComponent :show="openModal" @update:show="openModal = $event">
+    <ModalComponent :show="openModal" :panel="true" @update:show="openModal = $event">
       <GlobalWidgetWrapper :widget-area="initialConfiguration.name" @updateWidgetArea="updateAreaByResponse"/>
     </ModalComponent>
     <draggable
@@ -39,6 +39,7 @@
                           :widget-area-name="initialConfiguration.name"
                           :configuration="mergeConfiguration(element.widget)"
                           :initial-configuration="element.configuration"
+                          :required-roles="element.widget.requiredRoles"
                           @update="updateAreaByResponse"
 
           />

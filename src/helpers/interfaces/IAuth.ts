@@ -31,4 +31,6 @@ export interface User {
     role: IRole
     permissions?: Array<String>;
     status?: string;
+    roles?: string[];
+    isAdmin?: boolean;
 }

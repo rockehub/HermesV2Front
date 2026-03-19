@@ -1,7 +1,34 @@
 @import "./base.css";
 @import "./components.css";
 @import "./pages.css";
-@import "./fontawesome-all.css";
+/*@import "./fontawesome-all.css";*/
+
+/*@import "./fontawesome.css";*/
+@import "fonts/css/fontawesome.css";
+
+/* Core styles primeiro */
+@import "fonts/css/solid.css";
+@import "fonts/css/regular.css";
+@import "fonts/css/light.css";
+@import "fonts/css/brands.css";
+@import "fonts/css/duotone.css";
+
+/* Sharp variants */
+@import "fonts/css/sharp-solid.css";
+@import "fonts/css/sharp-regular.css";
+@import "fonts/css/sharp-light.css";
+@import "fonts/css/sharp-duotone-solid.css";
+
+/* Extras (não são core, pode deixar depois) */
+@import "fonts/css/chisel-regular.css";
+@import "fonts/css/etch-solid.css";
+@import "fonts/css/graphite-thin.css";
+@import "fonts/css/jelly-regular.css";
+@import "fonts/css/notdog-solid.css";
+@import "fonts/css/slab-regular.css";
+@import "fonts/css/thumbprint-light.css";
+@import "fonts/css/utility-semibold.css";
+@import "fonts/css/whiteboard-semibold.css";
 
 @tailwind base;
 
@@ -9,3 +36,61 @@
 
 @tailwind utilities;
 
+
+
+/* Lineone DataTable Overrides */
+:deep(.bh-table-hover) {
+    @apply w-full border-collapse;
+}
+
+:deep(.bh-table-hover thead) {
+    @apply bg-slate-50 dark:bg-navy-800;
+}
+
+:deep(.bh-table-hover th) {
+    @apply border-y border-transparent border-b-slate-200 px-4 py-3 text-left font-semibold uppercase text-slate-800 dark:border-b-navy-500 dark:text-navy-100;
+    @apply text-xs tracking-wider;
+}
+
+:deep(.bh-table-hover td) {
+    @apply whitespace-nowrap border-y border-transparent border-b-slate-150 px-4 py-3 dark:border-b-navy-500;
+}
+
+:deep(.bh-table-hover tbody tr) {
+    @apply transition-colors duration-150;
+}
+
+:deep(.bh-table-hover tbody tr:hover) {
+    @apply bg-slate-50 dark:bg-navy-700;
+}
+
+:deep(.bh-table-hover tbody tr.selected) {
+    @apply bg-primary/10 dark:bg-accent/10;
+}
+
+/* Checkbox Styling */
+:deep(.bh-table-hover input[type='checkbox']) {
+    @apply h-5 w-5 rounded border-slate-300 text-primary focus:ring-primary dark:border-navy-400 dark:bg-navy-700 dark:text-accent dark:focus:ring-accent;
+}
+
+/* Pagination Styling */
+:deep(.bh-pagination) {
+    @apply flex items-center justify-between border-t border-slate-200 px-4 py-3 dark:border-navy-500;
+}
+
+:deep(.bh-pagination button) {
+    @apply btn h-8 w-8 rounded-full p-0 text-slate-500 hover:bg-slate-300/20 focus:bg-slate-300/20 active:bg-slate-300/25 disabled:pointer-events-none disabled:opacity-40 dark:text-navy-200 dark:hover:bg-navy-300/20 dark:focus:bg-navy-300/20;
+}
+
+:deep(.bh-pagination .active) {
+    @apply bg-primary text-white dark:bg-accent;
+}
+
+:deep(.bh-pagination select) {
+    @apply form-select rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm text-slate-700 dark:border-navy-450 dark:bg-navy-700 dark:text-navy-100;
+}
+
+/* Search Input */
+:deep(.bh-datatable-search input) {
+    @apply form-input w-full rounded-lg border border-slate-300 bg-transparent px-3 py-2 placeholder:text-slate-400 hover:border-slate-400 focus:border-primary dark:border-navy-450 dark:hover:border-navy-400 dark:focus:border-accent;
+}

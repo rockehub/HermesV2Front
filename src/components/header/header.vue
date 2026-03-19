@@ -48,6 +48,9 @@
             <Searchbar v-if="$breakpoints.smAndUp"/>
             <SearchBarMobile v-if="$breakpoints.smAndDown"/>
 
+            <!-- Menu Controls (expand / config mode) -->
+            <MenuControls />
+
             <!-- Dark Mode Toggle -->
             <button
                 @click="globalState.toggleDarkMode()"
@@ -137,10 +140,11 @@ import Searchbar from "@/components/searchbar/Searchbar.vue";
 import {defineComponent} from "vue";
 import Notifications from "@/components/header/Notifications.vue";
 import SearchBarMobile from "@/components/searchbar/SearchBarMobile.vue";
+import MenuControls from "@/components/sidebar/MenuControls.vue";
 
 export default defineComponent({
   name: "header-component",
-  components: {SearchBarMobile, Notifications, Searchbar},
+  components: {SearchBarMobile, Notifications, Searchbar, MenuControls},
   setup: () => ({globalState: useGlobalState()}),
   data() {
     return {}

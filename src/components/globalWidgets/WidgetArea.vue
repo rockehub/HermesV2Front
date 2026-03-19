@@ -1,166 +1,205 @@
-<!-- WidgetArea.vue -->
 <template>
-  <div v-auto-animate class="" @dblclick="showEdit = !showEdit">
-    <div :class="[{'justify-between': size <3 , 'justify-start': size >3}]" v-if="showEdit"
-         class="flex p-2 "
-    >
-      <button
-        class="btn font-medium text-primary hover:bg-primary/20 focus:bg-primary/20 active:bg-primary/25 dark:text-accent-light dark:hover:bg-accent-light/20 dark:focus:bg-accent-light/20 dark:active:bg-accent-light/25"
-        @click.prevent="addWidget"
+  <div v-auto-animate class="w-full p-2" @dblclick="toggleEdit">
+    <!-- Toolbar -->
+    <Transition name="fade">
+      <div
+        v-if="showEdit"
+        class="flex items-center justify-between gap-2 rounded-lg border border-slate-200 dark:border-navy-600 bg-slate-50 dark:bg-navy-800 px-3 py-2 mb-4"
       >
-        <span class="fa-solid fa-circle-plus"></span>
-      </button>
-      <button
-        v-if="widgets.length > 0"
-        class="btn font-medium text-primary hover:bg-primary/20 focus:bg-primary/20 active:bg-primary/25 dark:text-accent-light dark:hover:bg-accent-light/20 dark:focus:bg-accent-light/20 dark:active:bg-accent-light/25"
-        @click.prevent="editing = !editing"
-      >
-        <em v-if="!editing" class="fa-solid fa-pen"></em>
-        <em v-else class="fa-solid fa-save"></em>
-      </button>
-    </div>
-    <ModalComponent :show="openModal" @update:show="openModal = $event">
-      <GlobalWidgetWrapper :widget-area="name" @updateWidgetArea="updateAreaByResponse" />
+        <div class="flex gap-2">
+          <button
+            class="btn size-8 p-0 rounded-md text-primary hover:bg-primary/10"
+            :title="t('widgets.add')"
+            @click.prevent="openAddModal"
+          >
+            <em class="fa-solid fa-plus"></em>
+          </button>
+
+          <button
+            v-if="widgets.length"
+            class="btn size-8 p-0 rounded-md hover:bg-primary/10"
+            :class="editing ? 'text-green-500' : 'text-primary'"
+            :title="editing ? t('widgets.done') : t('widgets.edit')"
+            @click.prevent="toggleEditing"
+          >
+            <em :class="editing ? 'fa-solid fa-check' : 'fa-solid fa-pen'"></em>
+          </button>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <span v-if="isSaving" class="text-xs text-slate-500">
+            <em class="fa-solid fa-spinner fa-spin mr-1"></em>
+            {{ t('widgets.saving') }}
+          </span>
+          <span class="text-xs text-slate-500 dark:text-navy-300">
+            {{ widgets.length }} {{ t('widgets.widgets') }}
+          </span>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- Modal -->
+    <ModalComponent :show="openModal" :panel="true" @update:show="openModal = $event">
+      <GlobalWidgetWrapper
+        :widget-area="name"
+        @updateWidgetArea="onWidgetAdded"
+        @close="openModal = false"
+      />
     </ModalComponent>
+
+    <!-- GRID COM TAMANHO RESTAURADO -->
     <draggable
-      v-if="widgets.length > 0"
+      v-if="widgets.length"
       v-model="widgets"
-      v-auto-animate
-      :class="[`widget-area widget-area-${masterSize}`, {'border border-primary dark:border-accent border-dashed': showEdit}]"
-      :disabled="!editing"
-      :options="{ group: 'widgets', animation: 200 }"
       item-key="id"
+      :disabled="!editing"
+      class="grid grid-cols-12 gap-4"
+      :options="{ group: 'widgets', animation: 200 }"
+      @end="onDragEnd"
     >
-      <template #item="{ element }">
-        <div v-auto-animate :class="`widget-${element.configuration.size}`">
-          <widget-wrapper :is="markRaw(element.widget.component)" :configuration="mergeConfiguration(element.widget)"
-                          :editing="editing"
-                          :initial-configuration="element.configuration"
-                          :pivot="element.pivot"
-                          :id="element.id"
-                          :plugin-name="element.widget.name"
-                          :widget-area-name="name"
-                          :widget-area-size="size"
-                          @update="updateAreaByResponse"
+      <template #item="{ element, index }">
+        <div
+          class="rounded-lg bg-white dark:bg-navy-700 shadow-sm transition"
+          :class="[widgetSizeClass(element), editing ? 'hover:shadow-md cursor-move' : '']"
+        >
+          <WidgetWrapper
+            :is="markRaw(element.widget.component)"
+            :configuration="mergeConfiguration(element.widget)"
+            :editing="editing"
+            :initial-configuration="element.configuration"
+            :pivot="element.pivot"
+            :widget-id="element.id"
+            :plugin-name="element.widget.name"
+            :widget-area-name="name"
+            :widget-area-size="size"
+            :position="index"
+            @update="onWidgetUpdated"
+            @delete="onWidgetDeleted"
+            @config-updated="onConfigUpdated"
           />
         </div>
       </template>
     </draggable>
-    <div v-else class="justify-center flex-wrap w-full p-4 flex gap-2">
-      {{ t('widgets.add_some_widget') }} <button @click="addWidget" class="text-primary dark:text-accent">{{ t('widgets.click_to_add') }}</button>
+
+    <!-- Empty -->
+    <div
+      v-else
+      class="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 dark:border-navy-600 p-8 text-center"
+    >
+      <em class="fa-solid fa-layer-group text-2xl text-slate-400"></em>
+      <p class="text-sm text-slate-500">{{ t('widgets.add_some_widget') }}</p>
+      <button
+        class="text-primary dark:text-accent text-sm font-medium hover:underline"
+        @click="openAddModal"
+      >
+        {{ t('widgets.click_to_add') }}
+      </button>
     </div>
   </div>
 </template>
 
 <script lang="ts" setup>
-import { computed, markRaw, onBeforeMount, ref, watch, watchEffect } from 'vue'
+import { markRaw, onBeforeMount, ref, watchEffect } from 'vue'
 import Draggable from 'vuedraggable'
 import ModalComponent from '@/components/modal/ModalComponent.vue'
 import GlobalWidgetWrapper from '@/components/globalWidgets/GlobalWidgetWrapper.vue'
-import { useGlobalWidgetStore } from '@/stores/globalWidgetStore'
-import type { WidgetArea, WidgetData, WidgetReference } from '@/types/global'
-import { usePluginManager } from '@/helpers/extensionLoader/usePluginManager'
 import WidgetWrapper from '@/components/globalWidgets/WidgetWrapper.vue'
+import { useGlobalWidgetStore } from '@/stores/globalWidgetStore'
+import { usePluginManager } from '@/helpers/extensionLoader/usePluginManager'
+import type { WidgetArea, WidgetReference } from '@/types/global'
 import { vAutoAnimate } from '@formkit/auto-animate'
 import { useI18n } from 'vue-i18n'
 
 const { findWidgetByName, mergeConfiguration } = usePluginManager()
 const widgetStore = useGlobalWidgetStore()
-let openModal = ref<boolean>(false)
 const { t } = useI18n()
-const data = ref<WidgetArea | null>(null)
-const props = defineProps<{ initialWidgets: any[], name: string, size: number }>()
-const widgets = ref([])
+
+const props = defineProps<{
+  name: string
+  size: number
+}>()
+
+const openModal = ref(false)
+const data = ref<any | null>(null)
+const widgets = ref<any[]>([])
 const editing = ref(false)
 const showEdit = ref(false)
+const isSaving = ref(false)
+
 onBeforeMount(async () => {
-  widgetStore.fetchUsersWidget(props.name).then((response => {
-    data.value = response
-  }))
+  data.value = await widgetStore.fetchUsersWidget(props.name)
 })
 
-
 watchEffect(() => {
+  if (!data.value?.widgets) return
 
-  if (data.value?.widgets) {
-    console.log('entered here now', data.value)
-    widgets.value = data.value.widgets.map((item: WidgetReference) => ({
+  widgets.value = data.value.widgets
+    .map((item: WidgetReference) => ({
       id: item.id.widgetId,
       widget: findWidgetByName(item.widget.name),
       position: item.position,
       pivot: item.id.widgetAreaId,
       configuration: item.configurations
-    })).filter(item => {
-      return item.widget != undefined
-    })
-  }
+    }))
+    .filter((w:any) => w.widget)
+    .sort((a:any, b:any) => (a.position ?? 0) - (b.position ?? 0))
 })
 
-const updateAreaByResponse = (widgetData: any) => {
+/**
+ * 🔑 RESTAURA O CONTROLE DE TAMANHO DO WIDGET
+ * configuration.size → col-span-X
+ */
+const widgetSizeClass = (element: any) => {
+  const size = Number(element.configuration?.size ?? 12)
+  const clamped = Math.min(Math.max(size, 1), 12)
+
+  return `col-span-${clamped}`
+}
+
+const toggleEdit = () => (showEdit.value = !showEdit.value)
+const toggleEditing = () => (editing.value = !editing.value)
+const openAddModal = () => (openModal.value = true)
+
+const onWidgetAdded = (widgetData: any) => {
+  data.value = widgetData
+  openModal.value = false
+}
+
+const onWidgetUpdated = (widgetData: any) => {
   data.value = widgetData
 }
 
-const updatePositions = (widgets: WidgetData[]) => {
-  widgetStore.updatePositions(widgets, props.name)
+const onWidgetDeleted = (widgetData: any) => {
+  data.value = widgetData
 }
 
-watch(() => editing.value, (value) => {
-  if (!value) {
-    updatePositions(widgets.value)
+const onConfigUpdated = (widgetData: any) => {
+  data.value = widgetData
+}
+
+const onDragEnd = async ({ oldIndex, newIndex }: any) => {
+  if (oldIndex === newIndex) return
+
+  const widget = widgets.value[newIndex]
+  if (!widget) return
+
+  isSaving.value = true
+  try {
+    await widgetStore.updateWidgetPosition(widget.pivot, widget.id, newIndex + 1)
+  } finally {
+    isSaving.value = false
   }
-})
-
-
-const addWidget = () => {
-  openModal.value = true
 }
-
-const masterSize = computed(() => {
-  let realNumber = props.size < 0 ? 1 : props.size
-  realNumber = realNumber > 12 ? 12 : realNumber
-  return realNumber
-})
-
 </script>
 
 <style scoped>
-.widget-area {
-  width: 100%;
-  height: 100%;
-  overflow: auto;
-  padding: 1rem;
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
 }
 
-.widget-grid {
-  display: grid;
-  gap: 1rem;
-  width: 100%;
-  height: 100%;
-  padding: 1rem;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); /* Responsive columns */
-  grid-auto-rows: minmax(100px, auto); /* Responsive rows */
-}
-
-.widget-item {
-  background: #f0f0f0;
-  border: 1px solid #ddd;
-  padding: 1rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: grab;
-  transition: all 0.2s ease;
-}
-
-.widget-item:active {
-  cursor: grabbing;
-  transform: scale(1.02); /* Visual feedback when dragging */
-}
-
-/* Media queries for different breakpoints */
-@media (max-width: 768px) {
-  .widget-grid {
-    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
-  }
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 </style>

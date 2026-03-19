@@ -1,7 +1,9 @@
 import {menuItems} from "@/helpers/extensionLoader/extension-loader";
 import {useBreakpoints} from "@/stores/breakpoints";
 import $axios from "@/helpers/integration/integration";
-import {type Component} from "vue";
+import { type Component } from 'vue'
+import type { FieldType, RegisteredField } from '@/classes/form/FieldRegistry'
+import type { AnyFieldSchema } from '@/classes/form/schemas'
 
 
 declare module '@vue/runtime-core' {
@@ -62,8 +64,8 @@ export interface ListItemType {
 }
 
 export interface Configurable {
-    configuration: any[]
-    widgetConfiguration?: any[]
+  configuration: any[]
+  widgetConfiguration?: AnyFieldSchema[]
 }
 
 export interface notConfigurable {
@@ -116,7 +118,7 @@ export type WidgetReference = {
         name: string;
         allowMultiple: boolean;
     };
-    position: string | null;
+    position: number | null;
     configurations: WidgetConfig;
 };
 
@@ -140,9 +142,10 @@ export type SearchItem = {
     action: () => void
 }
 
-export interface MenuItemIcon {
-    icon: string
-    type: "material" | "fa"
+type MenuItemIcon<T extends string = string> = {
+  type: T
+  icon: string
+  [key: string]: any
 }
 
 

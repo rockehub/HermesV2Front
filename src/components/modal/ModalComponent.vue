@@ -11,7 +11,9 @@
       ></div>
 
       <div
-          class=" min-w-[600px] relative max-w-[1000px] rounded-lg bg-white px-4 py-10 text-center transition-opacity duration-300 dark:bg-navy-700 sm:px-5"
+          :class="panel
+            ? 'relative w-[90vw] max-w-6xl rounded-xl overflow-hidden bg-white dark:bg-navy-700 transition-opacity duration-300'
+            : 'relative min-w-[400px] max-w-lg w-full rounded-lg bg-white px-5 py-8 text-center transition-opacity duration-300 dark:bg-navy-700'"
       >
         <slot></slot>
       </div>
@@ -23,7 +25,7 @@
 import { ref, defineEmits,watch } from 'vue';
 
 // Props to control modal visibility
-const props = defineProps<{ show: boolean }>();
+const props = defineProps<{ show: boolean; panel?: boolean }>();
 
 // Emits to notify parent component to close the modal
 const emit = defineEmits(['update:show']);
