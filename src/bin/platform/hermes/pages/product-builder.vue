@@ -415,6 +415,7 @@ async function save() {
     for (const variant of variants.value) {
       const vRes = await $axios.post('/api/v1/data/variant', {
         name: variant.name.trim(),
+        optionValues: { Variante: variant.name.trim() },
         stock: variant.stock,
         published: true,
         available: true,
@@ -1988,3 +1989,4 @@ onBeforeUnmount(() => {
   opacity: 0;
 }
 </style>
+

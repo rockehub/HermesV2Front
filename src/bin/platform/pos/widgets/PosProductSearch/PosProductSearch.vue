@@ -1,16 +1,19 @@
 <script lang="ts" setup>
 import { ref, watch } from 'vue'
 import { usePosApi } from '../../composables/usePosApi'
-import { usePosStore } from '../../store/usePosStore'
+import { usePosStore, type PosSearchProduct, type PosProductVariant } from '../../store/usePosStore'
 import { useDebounceFn } from '@vueuse/core'
+import VariantSelectorModal from '../../components/VariantSelectorModal.vue'
 
 const props = defineProps<{ configuration?: Record<string, any> }>()
 const api = usePosApi()
 const posStore = usePosStore()
 
 const query = ref('')
-const results = ref<any[]>([])
+const results = ref<PosSearchProduct[]>([])
 const loading = ref(false)
+const selectedProduct = ref<PosSearchProduct | null>(null)
+const selectorOpen = ref(false)
 
 const doSearch = useDebounceFn(async () => {
   if (!query.value.trim()) {
@@ -32,8 +35,20 @@ const doSearch = useDebounceFn(async () => {
 
 watch(query, doSearch)
 
-async function addToCart(hit: any) {
+async function addToCart(hit: PosSearchProduct) {
+  if (hit.requiresVariantSelection && (hit.variants?.length ?? 0) > 0) {
+    selectedProduct.value = hit
+    selectorOpen.value = true
+    return
+  }
   await posStore.addItem(hit.id, null, 1)
+}
+
+async function confirmVariant(variant: PosProductVariant) {
+  if (!selectedProduct.value) return
+  await posStore.addItem(selectedProduct.value.id, variant.id, 1)
+  selectorOpen.value = false
+  selectedProduct.value = null
 }
 
 function formatPrice(cents: number) {
@@ -43,7 +58,6 @@ function formatPrice(cents: number) {
 
 <template>
   <div class="flex h-full flex-col bg-white dark:bg-navy-750 rounded-lg overflow-hidden">
-    <!-- Search input -->
     <div class="border-b border-slate-100 dark:border-navy-700 px-4 py-3">
       <div class="relative">
         <em class="fa-light fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none"></em>
@@ -57,21 +71,17 @@ function formatPrice(cents: number) {
       </div>
     </div>
 
-    <!-- Results -->
     <div class="flex-1 overflow-y-auto is-scrollbar-hidden">
-      <!-- Empty query -->
       <div v-if="!query.trim()" class="flex flex-col items-center justify-center h-full text-slate-400 dark:text-navy-400 p-6">
         <em class="fa-light fa-magnifying-glass text-3xl mb-2 opacity-30"></em>
         <p class="text-xs">Digite para buscar produtos</p>
       </div>
 
-      <!-- No results -->
       <div v-else-if="!loading && results.length === 0" class="flex flex-col items-center justify-center h-full text-slate-400 p-6">
         <em class="fa-light fa-box-open text-3xl mb-2 opacity-30"></em>
         <p class="text-xs">Nenhum produto encontrado</p>
       </div>
 
-      <!-- Product cards -->
       <div v-else class="grid grid-cols-2 gap-2 p-3">
         <button
           v-for="hit in results"
@@ -80,6 +90,7 @@ function formatPrice(cents: number) {
           @click="addToCart(hit)"
         >
           <span class="text-xs font-medium text-slate-700 dark:text-navy-100 line-clamp-2 leading-tight">{{ hit.name }}</span>
+          <span v-if="hit.hasVariants" class="mt-1 text-[10px] font-medium uppercase tracking-wide text-slate-400">com variantes</span>
           <div class="mt-2 flex items-center justify-between gap-2">
             <span class="text-sm font-semibold text-primary">{{ formatPrice(hit.price) }}</span>
             <span
@@ -97,4 +108,12 @@ function formatPrice(cents: number) {
       </div>
     </div>
   </div>
+
+  <VariantSelectorModal
+    :open="selectorOpen"
+    :product="selectedProduct"
+    @close="selectorOpen = false; selectedProduct = null"
+    @confirm="confirmVariant"
+  />
 </template>
+

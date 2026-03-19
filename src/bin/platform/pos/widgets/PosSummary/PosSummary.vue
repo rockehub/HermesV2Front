@@ -19,7 +19,9 @@ function formatCurrency(cents: number) {
       <!-- Items count -->
       <div class="rounded-lg bg-slate-50 dark:bg-navy-700 px-3 py-2.5">
         <p class="text-xs text-slate-400 dark:text-navy-400">Itens</p>
-        <p class="text-xl font-bold text-slate-700 dark:text-navy-100">{{ posStore.cart?.entriesCount ?? 0 }}</p>
+        <p class="text-xl font-bold text-slate-700 dark:text-navy-100">
+          {{ posStore.cart?.entriesCount ?? 0 }}
+        </p>
       </div>
 
       <!-- Total -->
@@ -32,14 +34,23 @@ function formatCurrency(cents: number) {
       <div class="col-span-2 rounded-lg bg-slate-50 dark:bg-navy-700 px-3 py-2.5">
         <p class="text-xs text-slate-400 dark:text-navy-400 mb-0.5">Cliente</p>
         <p class="text-sm font-medium text-slate-700 dark:text-navy-100 truncate">
-          {{ posStore.customer ? `${posStore.customer.name} ${posStore.customer.surname}` : 'Consumidor final' }}
+          {{
+            posStore.customer
+              ? `${posStore.customer.name}  ${posStore.customer.surname ? posStore.customer.surname : ""}`
+              : 'Consumidor final'
+          }}
         </p>
       </div>
 
       <!-- Discount -->
-      <div v-if="posStore.cart?.totalDiscounts && posStore.cart.totalDiscounts > 0" class="col-span-2 rounded-lg bg-success/5 border border-success/20 px-3 py-2.5">
+      <div
+        v-if="posStore.cart?.totalDiscounts && posStore.cart.totalDiscounts > 0"
+        class="col-span-2 rounded-lg bg-success/5 border border-success/20 px-3 py-2.5"
+      >
         <p class="text-xs text-slate-400 dark:text-navy-400">Desconto aplicado</p>
-        <p class="text-sm font-bold text-success">-{{ formatCurrency(posStore.cart.totalDiscounts) }}</p>
+        <p class="text-sm font-bold text-success">
+          -{{ formatCurrency(posStore.cart.totalDiscounts) }}
+        </p>
       </div>
     </div>
 

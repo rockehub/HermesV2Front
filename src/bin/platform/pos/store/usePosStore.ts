@@ -15,10 +15,31 @@ export interface PosLine {
   variantId?: string | null
   name: string
   variantName?: string | null
+  propertiesDescription?: string | null
   quantity: number
   price: number
   pricePostTaxes: number
   totalPostTaxes: number
+}
+
+export interface PosProductVariant {
+  id: string
+  name: string
+  optionValues?: Record<string, string>
+  price: number
+  inStock: boolean
+  available: boolean
+  stock: number
+}
+
+export interface PosSearchProduct {
+  id: string
+  name: string
+  price: number
+  inStock: boolean
+  hasVariants?: boolean
+  requiresVariantSelection?: boolean
+  variants?: PosProductVariant[]
 }
 
 export interface PosShippingAddress {
@@ -138,6 +159,7 @@ export const usePosStore = defineStore('pos', () => {
       variantId: l.variantId,
       name: l.name,
       variantName: l.variantName,
+      propertiesDescription: l.propertiesDescription,
       quantity: l.quantity,
       price: l.unitPrice,
       pricePostTaxes: l.unitPostTaxes,

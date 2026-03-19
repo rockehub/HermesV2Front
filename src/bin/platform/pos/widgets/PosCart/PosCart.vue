@@ -66,6 +66,12 @@ function formatCurrency(cents: number) {
         <div class="flex-1 min-w-0">
           <p class="text-xs font-medium text-slate-700 dark:text-navy-100 truncate">{{ line.name }}</p>
           <p v-if="line.variantName" class="text-[10px] text-slate-400 truncate">{{ line.variantName }}</p>
+          <p
+            v-if="line.propertiesDescription && line.propertiesDescription !== line.variantName"
+            class="text-[10px] text-slate-400 truncate"
+          >
+            {{ line.propertiesDescription }}
+          </p>
           <p class="text-[11px] text-slate-500 dark:text-navy-300 mt-0.5">
             {{ formatCurrency(line.pricePostTaxes) }} × {{ line.quantity }} =
             <span class="font-medium text-slate-700 dark:text-navy-100">{{ formatCurrency(line.totalPostTaxes) }}</span>

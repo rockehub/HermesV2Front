@@ -88,6 +88,7 @@ declare module 'vue' {
     SkeletonForms: typeof import('./components/skeleton/forms.vue')['default']
     SkeletonLoaderWrapper: typeof import('./components/SkeletonLoaderWrapper.vue')['default']
     SkeletonWrapper: typeof import('./components/skeleton/wrapper.vue')['default']
+    VariantSelectorModal: typeof import('./bin/platform/pos/components/VariantSelectorModal.vue')['default']
     WelcomeWidgetComponent: typeof import('./bin/platform/dashboard/components/welcomeWidget/components/WelcomeWidgetComponent.vue')['default']
     WidgetAreaWidget: typeof import('./bin/platform/dashboard/components/widgetAreaWidget/components/WidgetAreaWidget.vue')['default']
   }
