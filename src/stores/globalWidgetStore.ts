@@ -1,13 +1,9 @@
 import { defineStore } from 'pinia'
 import type { WidgetBase } from '@/helpers/extensionLoader/WidgetBase'
 import { $axios } from '@/helpers/integration/integration'
+import type { WidgetArea } from '@/types/global.d'
 
-export interface WidgetAreaResponse {
-  id: string
-  name: string
-  type: string
-  widgets: any[]
-}
+export type WidgetAreaResponse = WidgetArea
 
 export const useGlobalWidgetStore = defineStore('globalWidgetStore', () => {
   /**

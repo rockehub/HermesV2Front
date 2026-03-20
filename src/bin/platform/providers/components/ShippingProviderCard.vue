@@ -54,13 +54,12 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import type {
+  FiscalProviderConfigResponse,
+  ShippingProviderConfigResponse
+} from '../composables/useProvidersApi'
 
-interface ProviderConfig {
-  provider?: string
-  status?: string
-  sandbox?: boolean
-  [key: string]: unknown
-}
+type ProviderConfig = ShippingProviderConfigResponse | FiscalProviderConfigResponse
 
 const props = defineProps<{
   provider: string

@@ -1359,7 +1359,8 @@ watch(selectedEdgeKey, (key) => {
   const inst = jsPlumbInstance.value
   if (!inst) return
   // Repaint all connections — highlight the selected one
-  inst.getConnections({} as any).forEach((conn: any) => {
+  const connections = inst.getConnections({} as any) as any[]
+  connections.forEach((conn: any) => {
     const srcCode = extractNodeCode(conn.sourceId ?? conn.source?.id ?? '')
     const tgtCode = extractNodeCode(conn.targetId ?? conn.target?.id ?? '')
     const edge = edges.value.find(

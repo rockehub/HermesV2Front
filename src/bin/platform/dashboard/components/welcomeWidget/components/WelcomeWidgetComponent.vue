@@ -21,7 +21,7 @@ const auth = useAuthStore()
         class="mt-2 flex-1 pt-2 text-center text-white sm:mt-0 sm:text-left"
     >
       <h3 class="text-xl">
-        {{ $t('welcome_widget.welcomeBack', { name: auth.user.name }) }}
+        {{ $t('welcome_widget.welcomeBack', { name: auth.user?.name ?? '' }) }}
       </h3>
     </div>
   </div>

@@ -30,6 +30,8 @@ export class MetadataAdapter {
       label: backendField.label,
       type: backendField.type,
       fieldType: backendField.fieldType,
+      tabLabel: backendField.tab ?? 'General',
+      tabOrder: 0,
       span: backendField.span || 6,
       validation: this.adaptValidation(backendField.validation),
       placeholder: backendField.placeholder,

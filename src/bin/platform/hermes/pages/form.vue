@@ -1,11 +1,11 @@
 <script lang="ts" setup>
 import DefaultLayout from '@/bin/platform/hermes/layouts/default.vue'
 import { useRoute } from 'vue-router'
-import { findMenu } from '@/bin/platform/hermes/classes/MenuUtils'
+import { findMenu, type HermesMenuItem } from '@/bin/platform/hermes/classes/MenuUtils'
 import { computed, ref, watchEffect } from 'vue'
 
 const route = useRoute()
-const menu = ref([])
+const menu = ref<HermesMenuItem[]>([])
 
 const resource = computed(() => {
   const sub = route.params.sub as string | undefined

@@ -153,7 +153,7 @@ export const usePosStore = defineStore('pos', () => {
   }
 
   function mapCart(data: any, previousLines: PosLine[] = []): PosCart {
-    const rawLines = (data.lines ?? []).map((l: any) => ({
+    const rawLines: PosLine[] = (data.lines ?? []).map((l: any) => ({
       id: l.entryId ?? l.id,
       productId: l.productId,
       variantId: l.variantId,
@@ -365,7 +365,11 @@ export const usePosStore = defineStore('pos', () => {
       const res = await api.checkout(cartId.value, {
         customerId: customer.value?.id ?? null,
         adminNotes: adminNotes ?? null,
-        payments: payments.value.map(p => ({ methodName: p.methodCode, amountInCents: p.amountInCents })),
+        payments: payments.value.map(p => ({
+          methodCode: p.methodCode,
+          methodName: p.methodName,
+          amountInCents: p.amountInCents
+        })),
         paymentMethodId,
         billingAddress,
         nfce: nfce ?? null

@@ -55,7 +55,7 @@ import Draggable from 'vuedraggable';
 import ModalComponent from "@/components/modal/ModalComponent.vue";
 import GlobalWidgetWrapper from "@/components/globalWidgets/GlobalWidgetWrapper.vue";
 import {useGlobalWidgetStore} from "@/stores/globalWidgetStore";
-import type {WidgetArea, WidgetData} from "@/types/global.d";
+import type {WidgetArea} from "@/types/global.d";
 import {usePluginManager} from "@/helpers/extensionLoader/usePluginManager";
 import WidgetWrapper from "@/components/globalWidgets/WidgetWrapper.vue";
 
@@ -64,13 +64,31 @@ const widgetStore = useGlobalWidgetStore();
 let openModal = ref<boolean>(false);
 const data = ref<WidgetArea | null>(null)
 const props = defineProps<{ initialConfiguration?: Record<string, any>, isCatalog: boolean, masterEditing: boolean }>()
-const widgets = ref([])
+type WidgetAreaConfiguration = {
+  name: string
+  size: number
+}
+
+type WidgetViewData = {
+  id: string
+  widget: any
+  position: number
+  pivot: string
+  configuration: Record<string, any>
+}
+
+const initialConfiguration = computed<WidgetAreaConfiguration>(() => ({
+  name: String(props.initialConfiguration?.name ?? ''),
+  size: Number(props.initialConfiguration?.size ?? 1)
+}))
+
+const widgets = ref<WidgetViewData[]>([])
 const editing = ref(false);
 
 if (!props.isCatalog) {
   onBeforeMount(async () => {
-      widgetStore.fetchUsersWidget(props.initialConfiguration.name).then((response => {
-       console.log(response)
+      if (!initialConfiguration.value.name) return
+      widgetStore.fetchUsersWidget(initialConfiguration.value.name).then((response => {
        data.value = response
      }))
 
@@ -85,25 +103,31 @@ const updateAreaByResponse = (widgetData: any) => {
 
 watchEffect(() => {
   if (data.value?.widgets) {
-    console.log("asdasdasdasd",data.value)
     widgets.value = data.value.widgets.map((item) => {
-      console.log(item)
+      const widget = findWidgetByName(item.widget.name)
       return {
         id: item.id.widgetId,
-        widget: findWidgetByName(item.widget.name),
-        position: item.position,
+        widget,
+        position: item.position ?? 0,
         pivot: item.id.widgetAreaId,
         configuration: item.configurations,
       }
     }).filter(item=>{
       return item.widget != undefined
-    });
+    }) as WidgetViewData[];
   }
 });
 
 
-const updatePositions = (widgets: WidgetData[]) => {
-  widgetStore.updatePositions(widgets, props.initialConfiguration.name);
+const updatePositions = (widgets: WidgetViewData[]) => {
+  widgetStore.updatePositions(
+    widgets.map((widget, index) => ({
+      id: widget.id,
+      pivot: widget.pivot,
+      position: widget.position ?? index + 1
+    })),
+    initialConfiguration.value.name
+  );
 }
 
 watch(() => editing.value, (value) => {
@@ -118,7 +142,7 @@ const addWidget = () => {
 }
 
 const masterSize = computed(() => {
-  let realNumber = props.initialConfiguration.size < 0 ? 1 : props.initialConfiguration.size;
+  let realNumber = initialConfiguration.value.size < 0 ? 1 : initialConfiguration.value.size;
   realNumber = realNumber > 12 ? 12 : realNumber;
   return realNumber
 })

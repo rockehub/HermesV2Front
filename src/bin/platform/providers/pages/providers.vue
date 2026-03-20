@@ -45,7 +45,7 @@
             <template #default="{ config }">
               <MelhorEnvioConfigForm
                 v-if="p.key === 'melhorenvio'"
-                :config="config"
+                :config="asShippingConfig(config)"
                 :saving="saving === p.key"
                 @activate="(form) => handleActivate(p.key, form)"
                 @disable="handleDisable(p.key)"
@@ -80,7 +80,7 @@
             <template #default="{ config }">
               <FocusNfeConfigForm
                 v-if="p.key === 'focusnfe'"
-                :config="config"
+                :config="asFiscalConfig(config)"
                 :saving="savingFiscal === p.key"
                 @activate="(form) => handleFiscalActivate(p.key, form)"
                 @disable="handleFiscalDisable(p.key)"
@@ -143,6 +143,14 @@ const fiscalConfigMap = computed(() => {
   for (const c of fiscalConfigs.value) m[c.provider] = c
   return m
 })
+
+function asShippingConfig(config?: ShippingProviderConfigResponse | FiscalProviderConfigResponse | null) {
+  return config as ShippingProviderConfigResponse | null | undefined
+}
+
+function asFiscalConfig(config?: ShippingProviderConfigResponse | FiscalProviderConfigResponse | null) {
+  return config as FiscalProviderConfigResponse | null | undefined
+}
 
 async function loadConfigs() {
   loading.value = true

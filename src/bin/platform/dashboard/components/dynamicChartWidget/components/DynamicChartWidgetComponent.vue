@@ -34,6 +34,7 @@ import {
   Legend,
   Filler
 } from 'chart.js'
+import type { ChartOptions } from 'chart.js'
 import { Line, Bar, Pie, Doughnut, Radar, PolarArea } from 'vue-chartjs'
 import { useGlobalWidgetStore } from '@/stores/globalWidgetStore'
 import { useAnalyticsApi } from '@/bin/platform/dashboard/components/dynamicChartWidget/composables/useAnalyticsApi'
@@ -126,7 +127,7 @@ const chartComponent = computed(() => {
   }
 })
 
-const chartOptions = computed(() => {
+const chartOptions = computed<ChartOptions<any>>(() => {
   const config = chartConfig.value
   const isHorizontal = config.chartType === 'HORIZONTAL_BAR'
   const isPie = ['PIE', 'DOUGHNUT', 'POLAR_AREA'].includes(config.chartType)
@@ -134,12 +135,12 @@ const chartOptions = computed(() => {
   return {
     responsive: true,
     maintainAspectRatio: false,
-    indexAxis: isHorizontal ? 'y' : 'x',
+    indexAxis: (isHorizontal ? 'y' : 'x') as 'x' | 'y',
     plugins: {
       title: { display: !!config.title, text: config.title || '' },
       legend: {
         display: config.showLegend ?? true,
-        position: config.legendPosition || 'top',
+        position: (config.legendPosition || 'top') as 'top' | 'left' | 'bottom' | 'right' | 'center' | 'chartArea',
         labels: { boxWidth: 12, font: { size: 11 } }
       }
     },
@@ -149,7 +150,7 @@ const chartOptions = computed(() => {
           x: { display: true, stacked: config.stacked },
           y: { display: true, beginAtZero: true, stacked: config.stacked }
         }
-  }
+  } as ChartOptions<any>
 })
 
 // Actions

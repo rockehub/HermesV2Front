@@ -1,7 +1,7 @@
 import { WidgetBase } from '@/helpers/extensionLoader/WidgetBase'
 import PosProductSearchComponent from './PosProductSearch.vue'
 import { markRaw } from 'vue'
-import type { TextFieldSchema } from '@/classes/form/schemas'
+import type { OptionFieldSchema, TextFieldSchema } from '@/classes/form/schemas'
 import * as yup from 'yup'
 import type { Configurable } from '@/types/global.d'
 
@@ -25,7 +25,7 @@ export class PosProductSearchWidget extends WidgetBase implements Configurable {
         { id: 12, name: 'Inteiro' }
       ],
       validation: yup.number().required()
-    },
+    } satisfies OptionFieldSchema,
     {
       code: 'defaultCategoryId',
       label: 'Categoria padrão (ID)',

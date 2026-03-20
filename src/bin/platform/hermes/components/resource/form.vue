@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { useCrud } from '../../composables/useCrud'
 import { useDynamicFormSchema } from '../../composables/useDynamicFormSchema'
 import FormGenerator from '@/components/plugins/form/generator.vue'
+import type { RegisteredField } from '@/classes/form/FieldRegistry'
 
 const props = defineProps<{ resource: string }>()
 
@@ -69,8 +70,8 @@ const handleSubmit = async (data: any) => {
 
   // Separate scalar fields from relation fields
   const allFields = schema.value.getFields()
-  const relationFields = allFields.filter((f) => f.config.fieldType === 'relation')
-  const relationKeys = new Set(relationFields.map((f) => f.config.code as string))
+  const relationFields = allFields.filter((f: RegisteredField) => f.config.fieldType === 'relation')
+  const relationKeys = new Set(relationFields.map((f: RegisteredField) => f.config.code as string))
 
   const scalarPayload: Record<string, any> = {}
   const toManyPayload: Record<string, string[]> = {}
@@ -80,7 +81,7 @@ const handleSubmit = async (data: any) => {
     if (!relationKeys.has(key)) {
       scalarPayload[key] = value
     } else {
-      const field = relationFields.find((f) => f.config.code === key)
+      const field = relationFields.find((f: RegisteredField) => f.config.code === key)
       const relType = field?.config?.relation?.type as string | undefined
       if (relType === 'many-to-many' || relType === 'one-to-many') {
         if (Array.isArray(value) && value.length > 0) {
