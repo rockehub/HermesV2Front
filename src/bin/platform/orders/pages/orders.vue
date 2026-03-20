@@ -155,7 +155,10 @@
                 </article>
 
                 <article class="rounded-3xl border border-slate-200 bg-white p-5 dark:border-navy-600 dark:bg-navy-800">
-                  <h3 class="mb-4 text-sm font-semibold uppercase tracking-[0.24em] text-slate-400 dark:text-navy-400">Deliveries</h3>
+                  <div class="mb-4 flex items-center justify-between gap-3">
+                    <h3 class="text-sm font-semibold uppercase tracking-[0.24em] text-slate-400 dark:text-navy-400">Deliveries</h3>
+                    <button class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 transition hover:border-slate-300 dark:border-navy-600 dark:bg-navy-700 dark:text-navy-100" type="button" @click="openDeliveriesPanel">Abrir painel de entregas</button>
+                  </div>
                   <div class="space-y-3">
                     <div v-for="delivery in selectedOrder.deliveries" :key="delivery.id ?? delivery.addressLabel ?? delivery.shippingLabel" class="rounded-2xl border border-slate-200 p-4 dark:border-navy-600">
                       <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -274,9 +277,11 @@
 <script setup lang="ts">
 import DefaultLayout from '@/bin/platform/hermes/layouts/default.vue'
 import { defineComponent, h, onMounted, reactive, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { useOrdersApi, type OrderDetail, type OrderListItem } from '../composables/useOrdersApi'
 
 const api = useOrdersApi()
+const router = useRouter()
 
 const filters = reactive({
   q: '',
@@ -383,6 +388,11 @@ function deliveryStatusPill(statusCode?: string | null) {
 
 function isRenderableImage(value: string) {
   return value.startsWith('http://') || value.startsWith('https://') || value.startsWith('/')
+}
+
+function openDeliveriesPanel() {
+  if (!selectedOrder.value) return
+  router.push({ name: 'order-deliveries', params: { orderId: selectedOrder.value.id } })
 }
 
 async function fetchOrders() {

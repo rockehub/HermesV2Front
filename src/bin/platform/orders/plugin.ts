@@ -1,6 +1,7 @@
 ﻿import { ExtensionBase } from '@/helpers/extensionLoader/ExtensionBase'
 import type { MenuItem } from '@/types/global.d'
 import OrdersPage from './pages/orders.vue'
+import OrderDeliveriesPage from './pages/order-deliveries.vue'
 import { type Ref, ref } from 'vue'
 import { $axios } from '@/helpers/integration/integration'
 
@@ -14,6 +15,12 @@ export default class OrdersPlugin extends ExtensionBase {
       name: 'orders',
       path: '/orders',
       component: OrdersPage,
+      meta: { auth: true, roles: ['orders:view'] }
+    },
+    {
+      name: 'order-deliveries',
+      path: '/orders/:orderId/deliveries',
+      component: OrderDeliveriesPage,
       meta: { auth: true, roles: ['orders:view'] }
     }
   ]

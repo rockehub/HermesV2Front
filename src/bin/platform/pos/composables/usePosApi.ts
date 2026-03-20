@@ -85,6 +85,9 @@ export interface DeliveryShippingOptionsSplit {
   itemCount: number
   selectedProvider: string | null
   selectedServiceCode: string | null
+  selectedDate?: string | null
+  quotedDateToDelivery?: string | null
+  deliveryIn?: string | null
   options: ShippingOptionItem[]
 }
 
@@ -95,6 +98,7 @@ export interface SetDeliveryShippingRequest {
   company?: string | null
   priceInCents: number
   deliveryDays: number
+  selectedDate?: string | null
 }
 
 export const usePosApi = () => {

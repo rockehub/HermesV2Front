@@ -129,6 +129,64 @@ export interface OrderDetail {
   timeline: OrderTimelineEvent[]
 }
 
+export interface DeliveryStatusOption {
+  code: string
+  label: string
+}
+
+export interface DeliveryItemSummary {
+  id: string
+  name: string
+  quantity: number | null
+}
+
+export interface OrderDeliveryAdmin {
+  id: string
+  title: string
+  statusCode: string
+  statusLabel: string
+  shippingType: string
+  shippingLabel: string
+  addressLabel: string | null
+  warehouseName: string | null
+  vendorName: string | null
+  provider: string | null
+  selectedShippingName: string | null
+  selectedShippingProvider: string | null
+  selectedShippingCode: string | null
+  shippingPriceInCents: number | null
+  selectedDeliveryDate: string | null
+  deliveryEstimateAt: string | null
+  quotedDeliveryAt: string | null
+  promisedDeliveryAt: string | null
+  sentAt: string | null
+  deliveredAt: string | null
+  confirmed: boolean
+  nfeState: string | null
+  nfeRef: string | null
+  nfeDocumentType: string | null
+  review: string | null
+  items: DeliveryItemSummary[]
+}
+
+export interface OrderDeliveriesDetail {
+  orderId: string
+  orderNumber: number
+  customerName: string
+  orderStatusCode: string
+  orderStatusLabel: string
+  trackingNumber: string | null
+  trackingUrl: string | null
+  statusOptions: DeliveryStatusOption[]
+  deliveries: OrderDeliveryAdmin[]
+}
+
+export interface UpdateDeliveryStatusPayload {
+  statusCode: string
+  happenedAt?: string | null
+  review?: string | null
+}
+
 export interface PageResponse<T> {
   content: T[]
   number: number
@@ -144,8 +202,16 @@ export const useOrdersApi = () => {
   const getOrder = (orderId: string) =>
     $axios.get<{ data: OrderDetail }>(`${BASE}/${orderId}`)
 
+  const getOrderDeliveries = (orderId: string) =>
+    $axios.get<{ data: OrderDeliveriesDetail }>(`${BASE}/${orderId}/deliveries`)
+
+  const updateDeliveryStatus = (orderId: string, deliveryId: string, payload: UpdateDeliveryStatusPayload) =>
+    $axios.patch<{ data: OrderDeliveryAdmin }>(`${BASE}/${orderId}/deliveries/${deliveryId}/status`, payload)
+
   return {
     listOrders,
     getOrder,
+    getOrderDeliveries,
+    updateDeliveryStatus,
   }
 }

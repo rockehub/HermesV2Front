@@ -17,6 +17,7 @@ const addressError = ref<string | null>(null)
 const splitsLoading = ref(false)
 const selectingFor = ref<string | null>(null)   // deliveryId currently being saved
 const pendingSelectionByDelivery = ref<Record<string, { provider: string; serviceCode: string }>>({})
+const selectedDateByDelivery = ref<Record<string, string>>({})
 const addressesLoading = ref(false)
 const showNewAddressForm = ref(false)
 const editingAddressId = ref<string | null>(null)  // addressId currently being edited
@@ -64,12 +65,34 @@ function formatDays(days: number) {
   return days === 1 ? '1 dia útil' : `${days} dias úteis`
 }
 
+function formatDate(value?: string | null) {
+  if (!value) return '--'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '--'
+  return date.toLocaleDateString('pt-BR')
+}
+
+function tomorrowDateInput() {
+  const date = new Date()
+  date.setDate(date.getDate() + 1)
+  return date.toISOString().slice(0, 10)
+}
+
 function splitKey(split: any, index: number) {
   return split.deliveryId ?? `${split.warehouseId ?? 'unassigned'}-${index}`
 }
 
 function optionKey(split: any, opt: any, index: number) {
   return `${splitKey(split, index)}-${opt.provider}-${opt.serviceCode}`
+}
+
+function ensureSelectedDateState() {
+  const next: Record<string, string> = {}
+  for (const split of splits.value) {
+    if (!split.deliveryId) continue
+    next[split.deliveryId] = selectedDateByDelivery.value[split.deliveryId] ?? split.selectedDate?.slice(0, 10) ?? tomorrowDateInput()
+  }
+  selectedDateByDelivery.value = next
 }
 
 function isSelected(split: any, opt: any) {
@@ -188,6 +211,8 @@ async function loadSplitOptions() {
 
 async function selectOption(deliveryId: string | null, opt: any) {
   if (!deliveryId) return
+  const selectedDate = selectedDateByDelivery.value[deliveryId]
+  if (!selectedDate) return
   selectingFor.value = deliveryId
   pendingSelectionByDelivery.value = {
     ...pendingSelectionByDelivery.value,
@@ -201,6 +226,7 @@ async function selectOption(deliveryId: string | null, opt: any) {
       company: opt.company ?? null,
       priceInCents: opt.priceInCents,
       deliveryDays: opt.deliveryDays,
+      selectedDate,
     }
     await posStore.setDeliveryShipping(deliveryId, req)
   } finally {
@@ -229,6 +255,7 @@ onMounted(async () => {
     posStore.deliveryMode = 'delivery'
     addressSaved.value = true
   }
+  ensureSelectedDateState()
 })
 
 // Reset widget state when a new sale starts, but keep last address in form
@@ -248,6 +275,10 @@ watch(() => posStore.cart?.customerId, async (newId) => {
     }
   }
 })
+
+watch(splits, () => {
+  ensureSelectedDateState()
+}, { deep: true, immediate: true })
 </script>
 
 <template>
@@ -488,6 +519,24 @@ watch(() => posStore.cart?.customerId, async (newId) => {
                 Nenhuma opção disponível para este depósito.
               </div>
 
+              <div v-if="split.deliveryId" class="rounded-lg border border-slate-200 dark:border-navy-600 px-3 py-3 bg-white dark:bg-navy-800 space-y-2">
+                <label class="block">
+                  <span class="text-[10px] uppercase tracking-[0.16em] text-slate-400">Data desejada da entrega</span>
+                  <input v-model="selectedDateByDelivery[split.deliveryId]" type="date"
+                    class="mt-1.5 w-full rounded-lg border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-700 px-3 py-2 text-xs text-slate-700 dark:text-navy-100 focus:border-primary focus:outline-none" />
+                </label>
+                <div class="grid grid-cols-2 gap-2 text-[10px] text-slate-500 dark:text-navy-400">
+                  <div class="rounded-lg bg-slate-50 dark:bg-navy-700 px-2.5 py-2">
+                    <p class="uppercase tracking-[0.14em] text-slate-400">Cotacao</p>
+                    <p class="mt-1 text-slate-700 dark:text-navy-100">{{ formatDate(split.quotedDateToDelivery) }}</p>
+                  </div>
+                  <div class="rounded-lg bg-slate-50 dark:bg-navy-700 px-2.5 py-2">
+                    <p class="uppercase tracking-[0.14em] text-slate-400">Delivery in</p>
+                    <p class="mt-1 text-slate-700 dark:text-navy-100">{{ formatDate(split.deliveryIn) }}</p>
+                  </div>
+                </div>
+              </div>
+
               <button
                 v-for="opt in split.options"
                 :key="optionKey(split, opt, idx)"
@@ -499,7 +548,7 @@ watch(() => posStore.cart?.customerId, async (newId) => {
                       ? 'border-slate-100 dark:border-navy-700 bg-slate-50 dark:bg-navy-800 cursor-not-allowed opacity-60'
                       : 'border-slate-200 dark:border-navy-600 hover:border-primary/40',
                 ]"
-                :disabled="!!opt.error || (!!split.deliveryId && selectingFor === split.deliveryId)"
+                :disabled="!!opt.error || !split.deliveryId || !selectedDateByDelivery[split.deliveryId] || (!!split.deliveryId && selectingFor === split.deliveryId)"
                 @click="!opt.error && selectOption(split.deliveryId, opt)"
               >
                 <div class="flex items-center justify-between gap-2">
@@ -513,6 +562,7 @@ watch(() => posStore.cart?.customerId, async (newId) => {
                     <p v-else-if="opt.deliveryDays" class="text-[10px] text-slate-400 mt-0.5">
                       {{ formatDays(opt.deliveryDays) }}
                     </p>
+                    <p v-if="split.deliveryId && !selectedDateByDelivery[split.deliveryId]" class="text-[10px] text-amber-500 mt-0.5">Selecione a data desejada antes de aplicar o frete.</p>
                   </div>
                   <div class="text-right shrink-0">
                     <p class="text-sm font-semibold"
