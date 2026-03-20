@@ -1,5 +1,5 @@
-import { ExtensionBase } from '@/helpers/extensionLoader/ExtensionBase'
-import type { MenuItem } from '@/types/global'
+﻿import { ExtensionBase } from '@/helpers/extensionLoader/ExtensionBase'
+import type { MenuItem } from '@/types/global.d'
 import employeesPage from './pages/employees.vue'
 import employeeDetailPage from './pages/employee-detail.vue'
 import rolesPage from './pages/roles.vue'
@@ -63,3 +63,4 @@ export default class SecurityPlugin extends ExtensionBase {
     }
   }
 }
+

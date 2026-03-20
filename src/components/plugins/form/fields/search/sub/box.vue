@@ -42,7 +42,7 @@ watch(
 
     debounceTimeout.value = setTimeout(() => {
       DynamicMethodsUtils.invoke(props.schema, props.params?.config.code, 'search', 'Action', value.value)
-        .then((response) => {
+        .then((response: any) => {
           searchResults.value = response
           isOpen.value = response.length > 0 // Open popper only if there are results
         })

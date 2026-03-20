@@ -20,10 +20,7 @@
       "@/*": ["./src/*"],
       "@W/*": ["./src/bin/platform/workflow/*"]
     },
-    "types": [
-      "vite/client", // Se estiver usando o Vite
-      "src/components.d.ts" // Adicione o caminho do seu arquivo .d.ts aqui
-    ]
+    "types": ["vite/client"]
   },
 
 }

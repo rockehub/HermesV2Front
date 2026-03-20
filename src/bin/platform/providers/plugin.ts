@@ -1,5 +1,5 @@
-import { ExtensionBase } from '@/helpers/extensionLoader/ExtensionBase'
-import type { MenuItem } from '@/types/global'
+﻿import { ExtensionBase } from '@/helpers/extensionLoader/ExtensionBase'
+import type { MenuItem } from '@/types/global.d'
 import providersPage from './pages/providers.vue'
 import { type Ref, ref } from 'vue'
 import { $axios } from '@/helpers/integration/integration'
@@ -42,3 +42,4 @@ export default class ProvidersPlugin extends ExtensionBase {
     }
   }
 }
+

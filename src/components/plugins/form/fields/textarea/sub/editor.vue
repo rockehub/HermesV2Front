@@ -2,7 +2,7 @@
 import { QuillEditor } from '@vueup/vue-quill'
 import '@vueup/vue-quill/dist/vue-quill.snow.css'
 import type { BaseFieldProps, TextareaFieldSchema } from '@/classes/form/schemas'
-import { htmlEditButton } from 'quill-html-edit-button'
+import htmlEditButton from 'quill-html-edit-button'
 import { ref, watch } from 'vue'
 
 const props = defineProps<BaseFieldProps<TextareaFieldSchema>>()

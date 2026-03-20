@@ -28,7 +28,14 @@ const baseModal = ref<{ openModal?: () => void; closeModal?: () => void } | null
 const isLoading = ref(false)
 const selectedRows = ref<TableRow[]>([])
 
-const relationField = computed(() => props.schema?.getFieldByCode?.(props.code))
+const relationField = computed(() => {
+  const schema = props.schema as AbstractFormSchema<RegisteredField<any>> & {
+    getFieldByCode?: (code: string) => RegisteredField | undefined
+  }
+
+  return typeof schema.getFieldByCode === 'function' ? schema.getFieldByCode(props.code) : undefined
+})
+
 const relationResourcePath = computed(
   () => relationField.value?.config?.relation?.resourcePath || props.code.toLowerCase()
 )
@@ -49,9 +56,7 @@ const onSelectionChange = (rows: TableRow[]) => {
 
 const addItems = () => {
   const selectedItems = selectedRows.value.map((item) => normalizeRow(item))
-  const itemIds = selectedItems
-    .map((item) => item.id)
-    .filter((id): id is RowId => id !== undefined)
+  const itemIds = selectedItems.map((item) => item.id).filter((id): id is RowId => id !== undefined)
   emit('addItems', itemIds, selectedItems)
 }
 
@@ -91,7 +96,7 @@ const fetchData = async () => {
 <template>
   <modal-modal-base @afterEmit="fetchData" :confirm-callback="addItems" ref="baseModal" size="2xl">
     <template #trigger>
-        <em class=" fa-solid fa-plus" />
+      <em class="fa-solid fa-plus" />
     </template>
     <template #content>
       <plugins-form-fields-relation-sub-basetable

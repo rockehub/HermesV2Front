@@ -1,7 +1,9 @@
 <template>
   <div class="flex flex-col w-full max-h-[88vh]">
     <!-- Modal Header -->
-    <div class="flex items-center justify-between px-5 py-3 border-b border-slate-200 dark:border-navy-600 bg-slate-50 dark:bg-navy-800 rounded-t-xl shrink-0">
+    <div
+      class="flex items-center justify-between px-5 py-3 border-b border-slate-200 dark:border-navy-600 bg-slate-50 dark:bg-navy-800 rounded-t-xl shrink-0"
+    >
       <div class="flex items-center gap-2">
         <em class="fa-solid fa-cube text-primary text-sm"></em>
         <h3 class="font-semibold text-slate-700 dark:text-navy-100">{{ t('widgets.add') }}</h3>
@@ -17,8 +19,12 @@
     <!-- Body -->
     <div class="grid grid-cols-12 gap-0 flex-1 min-h-0 overflow-hidden">
       <!-- Categorias -->
-      <aside class="col-span-3 border-r border-slate-200 dark:border-navy-600 overflow-y-auto py-3 px-2 space-y-1 bg-slate-50 dark:bg-navy-800">
-        <p class="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-navy-400 px-2 pb-1">
+      <aside
+        class="col-span-3 border-r border-slate-200 dark:border-navy-600 overflow-y-auto py-3 px-2 space-y-1 bg-slate-50 dark:bg-navy-800"
+      >
+        <p
+          class="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-navy-400 px-2 pb-1"
+        >
           {{ t('widgets.categories') }}
         </p>
         <button
@@ -38,8 +44,12 @@
       </aside>
 
       <!-- Lista de Widgets -->
-      <section class="col-span-4 overflow-y-auto py-3 px-2 space-y-1 border-r border-slate-200 dark:border-navy-600">
-        <p class="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-navy-400 px-2 pb-1">
+      <section
+        class="col-span-4 overflow-y-auto py-3 px-2 space-y-1 border-r border-slate-200 dark:border-navy-600"
+      >
+        <p
+          class="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-navy-400 px-2 pb-1"
+        >
           {{ selectedCategory?.name || t('widgets.widgets') }}
         </p>
         <div
@@ -53,12 +63,17 @@
           ]"
           @click="selectWidget(widget)"
         >
-          <div class="font-medium text-sm text-slate-700 dark:text-navy-100">{{ t(widget.name) }}</div>
+          <div class="font-medium text-sm text-slate-700 dark:text-navy-100">
+            {{ t(widget.name) }}
+          </div>
           <div v-if="widget.description" class="text-xs text-slate-500 dark:text-navy-300 mt-0.5">
             {{ t(widget.description) }}
           </div>
         </div>
-        <div v-if="!selectedCategory?.widgets?.length" class="flex flex-col items-center justify-center py-8 text-slate-400 dark:text-navy-500">
+        <div
+          v-if="!selectedCategory?.widgets?.length"
+          class="flex flex-col items-center justify-center py-8 text-slate-400 dark:text-navy-500"
+        >
           <em class="fa-solid fa-box-open text-2xl mb-2"></em>
           <p class="text-xs">Nenhum widget nesta categoria</p>
         </div>
@@ -68,16 +83,29 @@
       <section class="col-span-5 flex flex-col overflow-hidden">
         <div v-if="selectedWidget" class="flex flex-col h-full">
           <!-- Widget Header -->
-          <div class="flex justify-between items-center px-4 py-3 border-b border-slate-200 dark:border-navy-600 shrink-0">
+          <div
+            class="flex justify-between items-center px-4 py-3 border-b border-slate-200 dark:border-navy-600 shrink-0"
+          >
             <div>
-              <h4 class="font-semibold text-sm text-slate-700 dark:text-navy-100">{{ t(selectedWidget.name) }}</h4>
-              <p v-if="selectedWidget.description" class="text-xs text-slate-500 dark:text-navy-300 mt-0.5">{{ t(selectedWidget.description) }}</p>
+              <h4 class="font-semibold text-sm text-slate-700 dark:text-navy-100">
+                {{ t(selectedWidget.name) }}
+              </h4>
+              <p
+                v-if="selectedWidget.description"
+                class="text-xs text-slate-500 dark:text-navy-300 mt-0.5"
+              >
+                {{ t(selectedWidget.description) }}
+              </p>
             </div>
             <div class="flex gap-2">
               <button
                 v-if="hasConfiguration"
                 class="btn size-8 p-0 rounded-lg"
-                :class="showConfigForm ? 'text-primary bg-primary/10' : 'text-slate-500 hover:text-primary hover:bg-primary/10'"
+                :class="
+                  showConfigForm
+                    ? 'text-primary bg-primary/10'
+                    : 'text-slate-500 hover:text-primary hover:bg-primary/10'
+                "
                 :title="t('widgets.initial_configuration')"
                 @click="showConfigForm = !showConfigForm"
               >
@@ -98,8 +126,13 @@
           <!-- Overflow scroll area -->
           <div class="flex-1 overflow-y-auto">
             <!-- Formulário de Configuração Inicial -->
-            <div v-if="showConfigForm && hasConfiguration" class="p-4 border-b border-slate-200 dark:border-navy-600 bg-slate-50 dark:bg-navy-800">
-              <p class="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-navy-400 mb-3">
+            <div
+              v-if="showConfigForm && hasConfiguration"
+              class="p-4 border-b border-slate-200 dark:border-navy-600 bg-slate-50 dark:bg-navy-800"
+            >
+              <p
+                class="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-navy-400 mb-3"
+              >
                 {{ t('widgets.initial_configuration') }}
               </p>
               <plugins-form-generator
@@ -118,13 +151,17 @@
 
             <!-- Preview do Widget -->
             <div class="p-4">
-              <p class="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-navy-400 mb-2">
+              <p
+                class="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-navy-400 mb-2"
+              >
                 {{ t('widgets.preview') }}
               </p>
-              <div class="rounded-lg border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-700 overflow-hidden">
+              <div
+                class="rounded-lg border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-700 overflow-hidden"
+              >
                 <widget-wrapper
                   :is="markRaw(selectedWidget.component)"
-                  :configuration="mergeConfiguration(selectedWidget)"
+                  :configuration="mergeConfiguration(selectedWidget as any)"
                   :in-catalog="true"
                   :initial-configuration="configurationValues"
                   :plugin-name="selectedWidget.name"
@@ -136,7 +173,10 @@
           </div>
         </div>
 
-        <div v-else class="flex flex-col items-center justify-center h-full gap-2 text-slate-400 dark:text-navy-500 p-8">
+        <div
+          v-else
+          class="flex flex-col items-center justify-center h-full gap-2 text-slate-400 dark:text-navy-500 p-8"
+        >
           <em class="fa-solid fa-cube text-4xl"></em>
           <p class="text-sm font-medium">{{ t('widgets.select_to_preview') }}</p>
           <p class="text-xs text-center">Selecione uma categoria e um widget para visualizar</p>
@@ -154,6 +194,7 @@ import type { WidgetBase } from '@/helpers/extensionLoader/WidgetBase.js'
 import WidgetWrapper from '@/components/globalWidgets/WidgetWrapper.vue'
 import { WidgetFormSchema } from '@/classes/schemas/widget-form-schema'
 import { useI18n } from 'vue-i18n'
+import type { ExtensionBase } from '@/helpers/extensionLoader/ExtensionBase'
 
 const { t } = useI18n()
 const widgetStore = useGlobalWidgetStore()
@@ -171,8 +212,14 @@ const showConfigForm = ref(false)
 const isAdding = ref(false)
 
 // Categorias filtradas
+type GlobalWidgetItem = {
+  widgets: WidgetBase[]
+  name: string
+}
+
 const categories = computed(() => {
-  return getGlobalWidgets().value.filter((item) => item.widgets.length > 0)
+  const items = getGlobalWidgets().value as unknown as GlobalWidgetItem[]
+  return items.filter((item) => item.widgets.length > 0)
 })
 
 // Verifica se o widget tem configurações
@@ -220,7 +267,7 @@ const addWidgetToArea = async () => {
   try {
     const response = await widgetStore.addToWidgetArea(
       props.widgetArea,
-      selectedWidget.value,
+      selectedWidget.value as any,
       configurationValues.value
     )
     emit('updateWidgetArea', response)

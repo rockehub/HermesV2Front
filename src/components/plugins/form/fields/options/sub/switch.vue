@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import type { OptionsPropsSchema } from '@/classes/form/schemas'
+import type { OptionsPropsSchema, OptionsPropsSchema2 } from '@/classes/form/schemas'
 import { Field } from 'vee-validate'
 import { useI18n } from 'vue-i18n'
 import { ref } from 'vue'
 
 const { t } = useI18n()
-const props = defineProps<OptionsPropsSchema>()
+const props = defineProps<OptionsPropsSchema2>()
 
 const value = ref(false)
 </script>

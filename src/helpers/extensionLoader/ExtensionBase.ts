@@ -11,11 +11,11 @@ export abstract class ExtensionBase {
 
   }
 
-  async routerBefore(to: RouteLocationNormalized, from, next) {
+  async routerBefore(to: RouteLocationNormalized, from:any, next:any) {
 
   }
 
-  async routerAfter(to, from) {
+  async routerAfter(to:any, from:any) {
 
   }
 

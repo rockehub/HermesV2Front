@@ -1,6 +1,6 @@
 import {menuItems} from "@/helpers/extensionLoader/extension-loader";
 import {useBreakpoints} from "@/stores/breakpoints";
-import $axios from "@/helpers/integration/integration";
+import { $axios } from "@/helpers/integration/integration";
 import { type Component } from 'vue'
 import type { FieldType, RegisteredField } from '@/classes/form/FieldRegistry'
 import type { AnyFieldSchema } from '@/classes/form/schemas'
@@ -11,8 +11,17 @@ declare module '@vue/runtime-core' {
         $toast: any
         $menu: ReturnType<typeof menuItems>;
         $breakpoints: ReturnType<typeof useBreakpoints>;
-        $socket: returnType<typeof Echo>;
-        $axios: returnType<typeof $axios>;
+        $socket: unknown;
+        $axios: typeof $axios;
+        $t: (key: string, ...args: unknown[]) => string;
+    }
+}
+
+declare global {
+    interface Window {
+        downloadI18nKeys?: () => void;
+        showI18nKeys?: () => void;
+        clearI18nKeys?: () => void;
     }
 }
 

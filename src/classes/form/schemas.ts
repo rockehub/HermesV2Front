@@ -20,6 +20,7 @@ export interface BaseFieldSchema {
   validation?: YupSchema
   condition?: FieldCondition | ConditionEvaluator | ConditionEvaluator[]
   useOnBlur?: boolean
+  relation? : any
 }
 
 export interface FieldCondition {
@@ -200,9 +201,15 @@ export interface FileFieldSchema extends BaseFieldSchema {
   webKitDirectory?: boolean
 }
 
-export interface OptionsPropsSchema {
+export interface OptionsPropsSchema2 {
   options: any[]
   params: RegisteredField<'options'>
+  field: any
+}
+
+export interface OptionsPropsSchema {
+  options: any[]
+  params: OptionFieldSchema
   field: any
 }
 

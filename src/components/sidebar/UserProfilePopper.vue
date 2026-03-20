@@ -23,7 +23,7 @@
 
             <div class="relative">
               <div @click="isOpen = !isOpen" class="bg-transparent text-white">
-                {{auth.user.organizationName }}
+                {{ auth.user ? auth?.user?.role : 'no orgnazation' }}
               </div>
             </div>
 

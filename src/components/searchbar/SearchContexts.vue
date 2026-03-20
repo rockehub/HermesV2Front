@@ -1,4 +1,4 @@
-<template>
+﻿<template>
 
   <Popper placement="bottom-end" offsetDistance="4"
           class="inline-flex"
@@ -51,7 +51,7 @@
           import {defineComponent} from 'vue';
           import Popper from "vue3-popper";
           import {searchContexts} from "@/helpers/extensionLoader/extension-loader";
-          import {SearchContextItem} from "@/types/global";
+          import type {SearchContextItem} from "@/types/global.d";
           import {useSearchStore} from "@/stores/stores";
 
 

@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div v-auto-animate class="w-full p-2" @dblclick="toggleEdit">
     <!-- Toolbar -->
     <Transition name="fade">
@@ -106,7 +106,7 @@ import GlobalWidgetWrapper from '@/components/globalWidgets/GlobalWidgetWrapper.
 import WidgetWrapper from '@/components/globalWidgets/WidgetWrapper.vue'
 import { useGlobalWidgetStore } from '@/stores/globalWidgetStore'
 import { usePluginManager } from '@/helpers/extensionLoader/usePluginManager'
-import type { WidgetArea, WidgetReference } from '@/types/global'
+import type { WidgetArea, WidgetReference } from '@/types/global.d'
 import { vAutoAnimate } from '@formkit/auto-animate'
 import { useI18n } from 'vue-i18n'
 
@@ -146,8 +146,8 @@ watchEffect(() => {
 })
 
 /**
- * 🔑 RESTAURA O CONTROLE DE TAMANHO DO WIDGET
- * configuration.size → col-span-X
+ * ðŸ”‘ RESTAURA O CONTROLE DE TAMANHO DO WIDGET
+ * configuration.size â†’ col-span-X
  */
 const widgetSizeClass = (element: any) => {
   const size = Number(element.configuration?.size ?? 12)
@@ -203,3 +203,4 @@ const onDragEnd = async ({ oldIndex, newIndex }: any) => {
   opacity: 0;
 }
 </style>
+

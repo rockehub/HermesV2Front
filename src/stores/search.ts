@@ -1,13 +1,12 @@
 import { defineStore } from 'pinia'
 import { type RemovableRef, useStorage } from '@vueuse/core'
-import { ErrorHandler } from '@/helpers/error/ErrorHandler'
-import { $axios } from '@/helpers/integration/integration'
 import Fuse from 'fuse.js'
 import { getSearchIndex } from '@/helpers/search/searchRegistry'
+import type { SearchItem } from '@/types/global.d'
 
 interface SearchState {
   searchQuery: string | RemovableRef<string>;
-  searchResults: [] | RemovableRef<[]>;
+  searchResults: SearchItem[];
   loading: boolean;
   activeBar: string;
   searchContexts: string | RemovableRef<string>;
@@ -24,7 +23,7 @@ export const useSearchStore = defineStore({
     searchContexts: useStorage('searchContexts', '')
   }),
   getters: {
-    getSearchResults(): [] {
+    getSearchResults(): SearchItem[] {
       return this.searchResults
     },
     getSearchQuery(): string {

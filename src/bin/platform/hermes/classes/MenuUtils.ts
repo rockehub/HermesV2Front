@@ -1,8 +1,9 @@
 import { $axios } from '@/helpers/integration/integration'
+import type { MenuItem } from '@/types/global'
 
-export interface HermesMenuItem {
+export interface HermesMenuItem extends MenuItem{
   name: string
-  icon: { icon: string; type: string }
+  icon: { icon: string; type: 'material' | 'fa' }
   params: { cockpit: string; sub?: string }
   label: string
   displayName: string

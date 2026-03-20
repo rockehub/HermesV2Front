@@ -1,5 +1,5 @@
-import { ExtensionBase } from '@/helpers/extensionLoader/ExtensionBase'
-import type { MenuItem } from '@/types/global'
+﻿import { ExtensionBase } from '@/helpers/extensionLoader/ExtensionBase'
+import type { MenuItem } from '@/types/global.d'
 import FiscalPage from './pages/fiscal.vue'
 import { type Ref, ref } from 'vue'
 
@@ -29,3 +29,4 @@ export default class FiscalPlugin extends ExtensionBase {
     ]
   }
 }
+

@@ -23,6 +23,7 @@ export type FieldType =
   | 'subform'
   | 'dynamic'
   | 'repeater'
+  | 'map'
 
 export type FieldSchemaMap = {
   text: TextFieldSchema
@@ -36,6 +37,7 @@ export type FieldSchemaMap = {
   subform: SubFormFieldSchema
   dynamic: DynamicFieldSchema
   repeater: DynamicFieldSchema
+  map: DynamicFieldSchema
 }
 
 export interface RegisteredField<T extends FieldType = FieldType> {

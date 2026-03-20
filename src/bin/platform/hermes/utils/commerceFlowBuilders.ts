@@ -422,7 +422,7 @@ export function parseProcessBlueprint(code: string, raw: string | null | undefin
     return {
       version: Number(parsed?.version ?? 1),
       startStepId:
-        typeof parsed?.startStepId === 'string' && steps.some((step) => step.id === parsed.startStepId)
+        typeof parsed?.startStepId === 'string' && steps.some((step:any) => step.id === parsed.startStepId)
           ? parsed.startStepId
           : steps[0].id,
       steps

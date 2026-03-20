@@ -6,7 +6,7 @@ import NumberField from '@/components/plugins/form/fields/number/sub/number.vue'
 import RangeField from '@/components/plugins/form/fields/number/sub/range.vue'
 import CurrencyField from '@/components/plugins/form/fields/number/sub/currency.vue'
 import QuantityField from '@/components/plugins/form/fields/number/sub/quantity.vue'
-const props = defineProps<BaseFieldProps<RegisteredField<'options'>>>()
+const props = defineProps<BaseFieldProps<RegisteredField<'number'>>>()
 
 const findSubField = (type: string) => {
   switch (type) {

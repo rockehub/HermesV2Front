@@ -1,8 +1,8 @@
-<script lang="ts" setup>
+﻿<script lang="ts" setup>
 import SidebarComponent from '@/components/sidebar/sidebar.vue'
 import HeaderComponent from '@/components/header/header.vue'
 import MenuConfigPopup from '@/bin/platform/hermes/components/menu/MenuConfigPopup.vue'
-import type { MenuIcon } from '@/types/global'
+import type { MenuIcon } from '@/types/global.d'
 import type { HermesMenuItem } from '@/bin/platform/hermes/classes/MenuUtils'
 import { useRoute, useRouter } from 'vue-router'
 import { computed, onMounted, ref, watch } from 'vue'
@@ -232,3 +232,4 @@ onMounted(() => {
 
   <MenuConfigPopup :show="!!configTarget" :item="configTarget" @close="configTarget = null" />
 </template>
+

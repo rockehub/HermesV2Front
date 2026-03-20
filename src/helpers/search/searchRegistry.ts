@@ -1,4 +1,4 @@
-import type { SearchItem } from '@/types/global'
+﻿import type { SearchItem } from '@/types/global.d'
 
 type TaggedSearchItem = SearchItem & { _tag?: string }
 
@@ -23,3 +23,4 @@ export function unregisterSearchItemsByTag(tag: string) {
 export function getSearchIndex() {
   return registry
 }
+

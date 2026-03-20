@@ -31,7 +31,7 @@
           ref="search"
           :placeholder="$t('search.input')"
           v-bind:value="searchState.searchQuery"
-          @input="searchState.search($event.target.value)"
+          @input="onInput"
       />
     </div>
 
@@ -65,21 +65,13 @@
         <p class="text-xs uppercase">{{$t('search.results')}}</p>
       </div>
 
-      <div class="mt-1 font-inter font-medium" v-if="searchState.activeBar === 'messages'">
-        <a  v-for="(message, index) in searchState.getSearchResults.Messages" :key="index"
+      <div class="mt-1 font-inter font-medium">
+        <a  v-for="(item, index) in searchState.getSearchResults" :key="`${item.name}-${index}`"
             class="group flex items-center space-x-2 px-2.5 py-2 tracking-wide outline-none transition-all hover:bg-slate-100 hover:text-slate-800 focus:bg-slate-100 focus:text-slate-800 dark:hover:bg-navy-600 dark:hover:text-navy-100 dark:focus:bg-navy-600 dark:focus:text-navy-100"
         >
-          <UserAvatar :size="10" :contact="message.contact" />
-          <span>{{message.contact.name}}</span>
-          <strong>{{ message.Message }}</strong>
-          <span>{{message.time}}</span>
-        </a >
-      </div>
-      <div class="mt-1 font-inter font-medium" v-if="searchState.activeBar === 'contacts'">
-        <a  v-for="(contact, index) in searchState.getSearchResults.Contacts" :key="index"
-            class="group flex items-center space-x-2 px-2.5 py-2 tracking-wide outline-none transition-all hover:bg-slate-100 hover:text-slate-800 focus:bg-slate-100 focus:text-slate-800 dark:hover:bg-navy-600 dark:hover:text-navy-100 dark:focus:bg-navy-600 dark:focus:text-navy-100">
-          <UserAvatar :size="10" :contact="contact" />
-          <span>{{contact.name}}</span>
+          <UserAvatar :size="10" />
+          <span>{{ item.name }}</span>
+          <strong v-if="item.description">{{ item.description }}</strong>
         </a >
       </div>
     </div>
@@ -94,7 +86,16 @@ import AppContainer from "@/components/apps/AppContainer.vue";
 
 export default defineComponent({
   name: 'SearchBarMobile',
-  setup: () => ({globalState: useGlobalState(), searchState: useSearchStore()}),
+  setup: () => {
+    const globalState = useGlobalState()
+    const searchState = useSearchStore()
+    const onInput = (event: Event) => {
+      const target = event.target as HTMLInputElement | null
+      searchState.search(target?.value ?? '')
+    }
+
+    return { globalState, searchState, onInput }
+  },
   components: {AppContainer, UserAvatar},
   updated() {
     let input: HTMLInputElement = this.$refs.search as HTMLInputElement;

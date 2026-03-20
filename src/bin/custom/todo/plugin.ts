@@ -1,7 +1,7 @@
-import {ExtensionBase} from "@/helpers/extensionLoader/ExtensionBase";
+﻿import {ExtensionBase} from "@/helpers/extensionLoader/ExtensionBase";
 import TodoPage from "./pages/TodoPage.vue"
 import { type App, ref, type Ref } from 'vue'
-import type {MenuItem} from "@/types/global";
+import type {MenuItem} from "@/types/global.d";
 
 export default class todoPlugin extends ExtensionBase {
     name = 'todo';

@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <Popper placement="bottom" offsetDistance="12" v-click-outside-element="closePopper"
           arrow :show="globalState.isSearchbarActive"
           class="flex"
@@ -52,12 +52,12 @@
             <p class="text-xs uppercase">{{ $t('search.results') }}</p>
           </div>
           <div class="mt-1 font-inter font-medium min-w-[400px]  max-h-[400px]">
-            <div v-for="item in searchState.getSearchResults">
+            <div v-for="item in searchState.getSearchResults" :key="item.name">
               <div
                 class="cursor-pointer group flex items-center space-x-2 px-2.5 py-2 tracking-wide outline-hidden transition-all hover:bg-slate-100 hover:text-slate-800 focus:bg-slate-100 focus:text-slate-800 dark:hover:bg-navy-600 dark:hover:text-navy-100 dark:focus:bg-navy-600 dark:focus:text-navy-100"
                 @click="onaAction(item.action)"
               >
-                <em
+                <em v-if="item.icon"
                   :class="{'material-icons': item.icon.type === 'material','text-[1.2rem]': item.icon.type === 'fa',[item.icon.icon]: item.icon.type === 'fa'}"
                   class="p-2"
                 >
@@ -80,13 +80,9 @@
 </template>
 <script lang="ts" setup>
 import Popper from 'vue3-popper'
-import { computed, watch } from 'vue'
+import { watch } from 'vue'
 import { useGlobalState } from '@/stores/global'
 import { useSearchStore } from '@/stores/stores'
-import AppContainer from '@/components/apps/AppContainer.vue'
-import SearchContexts from '@/components/searchbar/SearchContexts.vue'
-import { searchContexts } from '@/helpers/extensionLoader/extension-loader'
-import { SearchContextItem } from '@/types/global'
 
 const globalState = useGlobalState()
 const searchState = useSearchStore()
@@ -124,3 +120,4 @@ watch(() => searchState.searchQuery, (value) => {
 
 
 </script>
+

@@ -1,4 +1,4 @@
-<!-- WidgetArea.vue -->
+﻿<!-- WidgetArea.vue -->
 <template>
   <div class="">
     <span v-if="isCatalog"> area Widget</span>
@@ -55,7 +55,7 @@ import Draggable from 'vuedraggable';
 import ModalComponent from "@/components/modal/ModalComponent.vue";
 import GlobalWidgetWrapper from "@/components/globalWidgets/GlobalWidgetWrapper.vue";
 import {useGlobalWidgetStore} from "@/stores/globalWidgetStore";
-import type {WidgetArea, WidgetData} from "@/types/global";
+import type {WidgetArea, WidgetData} from "@/types/global.d";
 import {usePluginManager} from "@/helpers/extensionLoader/usePluginManager";
 import WidgetWrapper from "@/components/globalWidgets/WidgetWrapper.vue";
 
@@ -165,3 +165,4 @@ const masterSize = computed(() => {
   }
 }
 </style>
+

@@ -1,5 +1,5 @@
-import { ExtensionBase } from '@/helpers/extensionLoader/ExtensionBase'
-import type { MenuItem } from '@/types/global'
+﻿import { ExtensionBase } from '@/helpers/extensionLoader/ExtensionBase'
+import type { MenuItem } from '@/types/global.d'
 import OrdersPage from './pages/orders.vue'
 import { type Ref, ref } from 'vue'
 import { $axios } from '@/helpers/integration/integration'
@@ -39,3 +39,4 @@ export default class OrdersPlugin extends ExtensionBase {
     ]
   }
 }
+

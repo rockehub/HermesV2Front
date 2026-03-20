@@ -13,6 +13,8 @@ export abstract class WidgetBase {
 
   abstract allowMultiple: boolean
 
+  description: string =  "WidgetBase"
+
   requiredRoles: string[] = []
 
   configuration: AnyFieldSchema[] = [

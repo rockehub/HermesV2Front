@@ -14,6 +14,8 @@ export interface FormField {
   label: string
   type: FieldType
   fieldType: FieldType
+  tabLabel: string
+  tabOrder: number
   span: number
   validation?: yup.AnySchema
   options?: OptionMetadata[]

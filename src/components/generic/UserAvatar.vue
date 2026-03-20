@@ -11,7 +11,7 @@
 <script lang="ts">
 import {defineComponent} from 'vue'
 import {useAuthStore} from "@/stores/stores";
-import {User} from "@/helpers/interfaces/IAuth";
+import type {User} from "@/helpers/interfaces/IAuth";
 
 
 

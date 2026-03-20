@@ -1,5 +1,5 @@
-import { ExtensionBase } from '@/helpers/extensionLoader/ExtensionBase'
-import type { MenuItem } from '@/types/global'
+﻿import { ExtensionBase } from '@/helpers/extensionLoader/ExtensionBase'
+import type { MenuItem } from '@/types/global.d'
 import cockpitPage from './pages/cockpit.vue'
 import formPage from './pages/form.vue'
 import workflowDesignerPage from './pages/workflow-designer.vue'
@@ -123,3 +123,4 @@ export default class HermesPlugin extends ExtensionBase {
     )
   }
 }
+

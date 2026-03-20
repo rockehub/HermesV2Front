@@ -1,12 +1,14 @@
-import { type App, type Component, createVNode, ref, render } from 'vue'
+import { type App, type Component, createVNode, type Ref, ref, render } from 'vue'
 import { ExtensionBase } from '@/helpers/extensionLoader/ExtensionBase'
-import { type SearchContextItem } from '@/types/global.d'
+import { type MenuItem, type SearchContextItem } from '@/types/global.d'
 import { registerSearchItem } from '@/helpers/search/searchRegistry'
 import router from '@/helpers/routes/main'
+import type { RouteRecordRaw } from 'vue-router'
+import SearchContexts from '@/components/searchbar/SearchContexts.vue'
 
-export const routes = ref([])
+export const routes = ref<RouteRecordRaw[]>([])
 export const pluginsLoaded = ref(false)
-export const menuItems = ref([])
+export const menuItems = ref<Ref<MenuItem[]>[]>([])
 export const searchContexts: SearchContextItem[] = []
 export const plugins: Record<string, any> = {}
 export const languages: Record<string, any> = {}
@@ -23,9 +25,13 @@ export async function loadPlugins() {
 
   // 1. Criar instâncias diretamente no objeto `plugins`
   await Promise.all(
-    Object.entries(allPlugins).map(async ([key, module]) => {
+    Object.entries(allPlugins).map(async ([key, module]: [string, any]) => {
       const PluginClass = module.default
-      if (PluginClass && typeof PluginClass === 'function' && PluginClass.prototype instanceof ExtensionBase) {
+      if (
+        PluginClass &&
+        typeof PluginClass === 'function' &&
+        PluginClass.prototype instanceof ExtensionBase
+      ) {
         console.info(`Loading plugin: ${PluginClass.name}`)
         plugins[PluginClass.name] = new PluginClass() // Já cria a instância aqui
       }
@@ -37,6 +43,8 @@ export async function loadPlugins() {
     console.info(`Registering plugin: ${plugin.name}`)
 
 
+    console.warn(menuItems.value)
+    console.warn(plugin.menuItem)
     menuItems.value.push(plugin.menuItem)
 
     if (plugin.routes && Array.isArray(plugin.routes)) {
@@ -60,9 +68,9 @@ export async function loadPlugins() {
     })
 
 
-    if (plugin.searchContexts) {
-      searchContexts.push(...plugin.searchContexts)
-    }
+    // if (plugin.searchContexts) {
+    //   searchContexts.push(...plugin.searchContexts)
+    // }
 
     if (plugin.languages) {
       console.log(`registering languages for ${plugin.name}`)

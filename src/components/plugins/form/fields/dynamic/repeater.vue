@@ -15,7 +15,7 @@ const formInstances = reactive<
 >([])
 let instanceCounter = 0
 
-const addForm = async (index: number) => {
+const addForm = async (index?: any) => {
   try {
     if (initialRef.value == null && !props.params.config.shouldUseInCreate) return
     let initV
@@ -111,7 +111,6 @@ if (initialData) {
     </div>
     <button
       type="button"
-
       @click="addForm"
       class="btn w-full rounded-lg border border-primary px-4 py-2 font-medium text-primary hover:bg-primary hover:text-white focus:bg-primary focus:text-white active:bg-primary/90 dark:border-accent dark:text-accent-light dark:hover:bg-accent dark:hover:text-white dark:focus:bg-accent dark:focus:text-white mb-4"
     >
