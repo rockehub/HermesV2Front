@@ -50,6 +50,13 @@
                 @activate="(form) => handleActivate(p.key, form)"
                 @disable="handleDisable(p.key)"
               />
+              <LalamoveConfigForm
+                v-else-if="p.key === 'lalamove'"
+                :config="asShippingConfig(config)"
+                :saving="saving === p.key"
+                @activate="(form) => handleActivate(p.key, form)"
+                @disable="handleDisable(p.key)"
+              />
               <div v-else class="text-sm text-slate-500 dark:text-navy-400 italic">
                 Integração em breve
               </div>
@@ -102,6 +109,7 @@ import { useProvidersApi } from '../composables/useProvidersApi'
 import type { ShippingProviderConfigResponse, FiscalProviderConfigResponse } from '../composables/useProvidersApi'
 import ShippingProviderCard from '../components/ShippingProviderCard.vue'
 import MelhorEnvioConfigForm from '../components/MelhorEnvioConfigForm.vue'
+import LalamoveConfigForm from '../components/LalamoveConfigForm.vue'
 import FocusNfeConfigForm from '../components/FocusNfeConfigForm.vue'
 
 const toast = notification
@@ -177,7 +185,7 @@ async function loadFiscalConfigs() {
 }
 
 async function handleActivate(provider: string, form: {
-  clientId: string; clientSecret: string; sandbox: boolean; callbackBaseUrl: string
+  clientId: string; clientSecret: string; sandbox: boolean; callbackBaseUrl: string; extraConfig?: string
 }) {
   saving.value = provider
   try {

@@ -1,4 +1,4 @@
-import { $axios } from '@/helpers/integration/integration'
+﻿import { $axios } from '@/helpers/integration/integration'
 
 const BASE = '/api/v1/admin/orders'
 
@@ -151,6 +151,18 @@ export interface OrderDeliveryAdmin {
   warehouseName: string | null
   vendorName: string | null
   provider: string | null
+  trackingNumber: string | null
+  trackingUrl: string | null
+  shareLink: string | null
+  labelUrl: string | null
+  providerStatus: string | null
+  providerStatusDetail: string | null
+  externalReference: string | null
+  pickupReference: string | null
+  driverId: string | null
+  driverName: string | null
+  driverPhone: string | null
+  driverPlateNumber: string | null
   selectedShippingName: string | null
   selectedShippingProvider: string | null
   selectedShippingCode: string | null
@@ -187,6 +199,52 @@ export interface UpdateDeliveryStatusPayload {
   review?: string | null
 }
 
+export interface DeliveryShippingActionDefinition {
+  code: string
+  label: string
+  enabled: boolean
+  description: string | null
+}
+
+export interface DeliveryShippingActionHistoryItem {
+  id: string
+  provider: string
+  actionType: string
+  status: string
+  externalRef: string | null
+  errorMessage: string | null
+  executedAt: string | null
+  finishedAt: string | null
+  requestPayload: string | null
+  responsePayload: string | null
+}
+
+export interface DeliveryShippingActionsDetail {
+  orderId: string
+  deliveryId: string
+  provider: string | null
+  deliveryStatusCode: string
+  providerStatus: string | null
+  trackingNumber: string | null
+  trackingUrl: string | null
+  shareLink: string | null
+  labelUrl: string | null
+  providerStatusDetail: string | null
+  externalReference: string | null
+  pickupReference: string | null
+  driverId: string | null
+  driverName: string | null
+  driverPhone: string | null
+  driverPlateNumber: string | null
+  actions: DeliveryShippingActionDefinition[]
+  history: DeliveryShippingActionHistoryItem[]
+}
+
+export interface ExecuteDeliveryShippingActionPayload {
+  idempotencyKey?: string | null
+  payload?: Record<string, any> | null
+}
+
 export interface PageResponse<T> {
   content: T[]
   number: number
@@ -208,10 +266,22 @@ export const useOrdersApi = () => {
   const updateDeliveryStatus = (orderId: string, deliveryId: string, payload: UpdateDeliveryStatusPayload) =>
     $axios.patch<{ data: OrderDeliveryAdmin }>(`${BASE}/${orderId}/deliveries/${deliveryId}/status`, payload)
 
+  const getDeliveryShippingActions = (orderId: string, deliveryId: string) =>
+    $axios.get<{ data: DeliveryShippingActionsDetail }>(`${BASE}/${orderId}/deliveries/${deliveryId}/shipping-actions`)
+
+  const executeDeliveryShippingAction = (
+    orderId: string,
+    deliveryId: string,
+    actionType: string,
+    payload?: ExecuteDeliveryShippingActionPayload
+  ) => $axios.post<{ data: DeliveryShippingActionsDetail }>(`${BASE}/${orderId}/deliveries/${deliveryId}/shipping-actions/${actionType}`, payload ?? {})
+
   return {
     listOrders,
     getOrder,
     getOrderDeliveries,
     updateDeliveryStatus,
+    getDeliveryShippingActions,
+    executeDeliveryShippingAction,
   }
 }

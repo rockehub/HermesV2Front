@@ -26,17 +26,14 @@
                 {{ auth.user ? auth?.user?.role : 'no orgnazation' }}
               </div>
             </div>
-
           </div>
         </div>
         <div class="flex flex-col pt-2 pb-5">
-          <a
-            href="#"
+          <router-link
+            :to="{ name: 'profile' }"
             class="group flex items-center space-x-3 py-2 px-4 tracking-wide outline-none transition-all hover:bg-slate-100 focus:bg-slate-100 dark:hover:bg-navy-600 dark:focus:bg-navy-600"
           >
-            <div
-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-warning text-white"
-            >
+            <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-warning text-white">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 class="h-4.5 w-4.5"
@@ -57,53 +54,16 @@
               <h2
                 class="font-medium text-slate-700 transition-colors group-hover:text-primary group-focus:text-primary dark:text-navy-100 dark:group-hover:text-accent-light dark:group-focus:text-accent-light"
               >
-                Profile
+                Meu perfil
               </h2>
-              <div
-                class="text-xs text-slate-400 line-clamp-1 dark:text-navy-300"
-              >
-                Your profile setting
+              <div class="text-xs text-slate-400 line-clamp-1 dark:text-navy-300">
+                Editar dados e senha
               </div>
             </div>
-          </a>
-          <a
-            href="#"
-            class="group flex items-center space-x-3 py-2 px-4 tracking-wide outline-none transition-all hover:bg-slate-100 focus:bg-slate-100 dark:hover:bg-navy-600 dark:focus:bg-navy-600"
-          >
-            <div
-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-info text-white"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-4.5 w-4.5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                />
-              </svg>
-            </div>
-
-            <div>
-              <h2
-                class="font-medium text-slate-700 transition-colors group-hover:text-primary group-focus:text-primary dark:text-navy-100 dark:group-hover:text-accent-light dark:group-focus:text-accent-light"
-              >
-                Messages
-              </h2>
-              <div
-                class="text-xs text-slate-400 line-clamp-1 dark:text-navy-300"
-              >
-                Your messages and tasks
-              </div>
-            </div>
-          </a>
-          <a
-            href="#"
+          </router-link>
+          <router-link
+            v-if="hasRole(['security:employees:read'])"
+            :to="{ name: 'security-employees' }"
             class="group flex items-center space-x-3 py-2 px-4 tracking-wide outline-none transition-all hover:bg-slate-100 focus:bg-slate-100 dark:hover:bg-navy-600 dark:focus:bg-navy-600"
           >
             <div
@@ -131,93 +91,15 @@
               >
                 Team
               </h2>
-              <div
-                class="text-xs text-slate-400 line-clamp-1 dark:text-navy-300"
-              >
+              <div class="text-xs text-slate-400 line-clamp-1 dark:text-navy-300">
                 Your team activity
               </div>
             </div>
-          </a>
-          <a
-            href="#"
-            class="group flex items-center space-x-3 py-2 px-4 tracking-wide outline-none transition-all hover:bg-slate-100 focus:bg-slate-100 dark:hover:bg-navy-600 dark:focus:bg-navy-600"
-          >
-            <div
-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-error text-white"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-4.5 w-4.5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                />
-              </svg>
-            </div>
-
-            <div>
-              <h2
-                class="font-medium text-slate-700 transition-colors group-hover:text-primary group-focus:text-primary dark:text-navy-100 dark:group-hover:text-accent-light dark:group-focus:text-accent-light"
-              >
-                Activity
-              </h2>
-              <div
-                class="text-xs text-slate-400 line-clamp-1 dark:text-navy-300"
-              >
-                Your activity and events
-              </div>
-            </div>
-          </a>
-          <a
-            href="#"
-            class="group flex items-center space-x-3 py-2 px-4 tracking-wide outline-none transition-all hover:bg-slate-100 focus:bg-slate-100 dark:hover:bg-navy-600 dark:focus:bg-navy-600"
-          >
-            <div
-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-success text-white"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-4.5 w-4.5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                />
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                />
-              </svg>
-            </div>
-
-            <div>
-              <h2
-                class="font-medium text-slate-700 transition-colors group-hover:text-primary group-focus:text-primary dark:text-navy-100 dark:group-hover:text-accent-light dark:group-focus:text-accent-light"
-              >
-                Settings
-              </h2>
-              <div
-                class="text-xs text-slate-400 line-clamp-1 dark:text-navy-300"
-              >
-                Webapp settings
-              </div>
-            </div>
-          </a>
+          </router-link>
           <div class="mt-3 px-4">
-            <button @click="logout"
-                    class="btn h-9 w-full space-x-2 bg-primary text-white hover:bg-primary-focus focus:bg-primary-focus active:bg-primary-focus/90 dark:bg-accent dark:hover:bg-accent-focus dark:focus:bg-accent-focus dark:active:bg-accent/90"
+            <button
+              @click="logout"
+              class="btn h-9 w-full space-x-2 bg-primary text-white hover:bg-primary-focus focus:bg-primary-focus active:bg-primary-focus/90 dark:bg-accent dark:hover:bg-accent-focus dark:focus:bg-accent-focus dark:active:bg-accent/90"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -239,7 +121,6 @@
         </div>
       </div>
     </template>
-
   </Popper>
 </template>
 
@@ -251,6 +132,7 @@ import UserAvatar from '@/components/generic/UserAvatar.vue'
 import Popper from 'vue3-popper'
 import { useRouter } from 'vue-router'
 import { registerSearchItem } from '@/helpers/search/searchRegistry'
+import { hasRole } from '@/helpers/rbac/checks'
 
 const auth = useAuthStore()
 const isOpen = ref(false)
@@ -264,15 +146,13 @@ registerSearchItem({
   },
   description: 'logout user',
   icon: {
-    icon : "power",
-    type: "material"
+    icon: 'power',
+    type: 'material'
   },
-  keywords: ['logout','exit'],
+  keywords: ['logout', 'exit'],
   name: 'logout',
   type: 'action'
-
 })
-
 
 const logout = (): void => {
   auth.logout().then(() => {
@@ -290,8 +170,5 @@ const getRoles = () => {
   if (auth.user?.roles != undefined) {
     return auth.user.roles.map((role: String) => role).join(', ')
   }
-
 }
-
 </script>
-

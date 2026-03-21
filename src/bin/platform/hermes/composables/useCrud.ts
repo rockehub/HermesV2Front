@@ -60,7 +60,7 @@ export function useCrud<T = any>(entityName: string, options: CrudOptions = {}):
   const error = ref<string | null>(null)
   const pagination = ref<Pagination>({
     page: 0,
-    size: 20,
+    size: 50,
     totalPages: 0,
     totalElements: 0
   })

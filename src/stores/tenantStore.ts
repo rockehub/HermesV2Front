@@ -6,6 +6,9 @@ export interface TenantData {
   id: string
   name: string
   slug: string | null
+  adminAccessStatus?: 'FULL' | 'BILLING_ONLY' | 'BLOCKED' | null
+  subscriptionStatus?: string | null
+  blockedReason?: string | null
 }
 
 export const useTenantStore = defineStore('tenant', () => {
@@ -16,9 +19,7 @@ export const useTenantStore = defineStore('tenant', () => {
 
   const hasTenant = computed(() => !!currentTenantId.value)
   const isMultiTenant = computed(() => availableTenants.value.length > 1)
-  const currentTenant = computed(() =>
-    availableTenants.value.find(t => t.id === currentTenantId.value) ?? null
-  )
+  const currentTenant = computed(() => availableTenants.value.find((t) => t.id === currentTenantId.value) ?? null)
 
   function setTenants(tenants: TenantData[], selectedId: string | null) {
     availableTenants.value = tenants
@@ -48,6 +49,6 @@ export const useTenantStore = defineStore('tenant', () => {
     currentTenant,
     setTenants,
     selectTenant,
-    clearTenant,
+    clearTenant
   }
 })

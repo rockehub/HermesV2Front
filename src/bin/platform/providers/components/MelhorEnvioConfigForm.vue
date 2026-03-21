@@ -36,6 +36,47 @@
       </p>
     </div>
 
+    <div>
+      <label class="block text-sm font-medium text-slate-700 dark:text-navy-200 mb-1">Agencia Melhor Envio</label>
+      <input
+        v-model="form.agency"
+        type="number"
+        min="1"
+        placeholder="Ex: 49"
+        class="form-input w-full rounded-lg border border-slate-300 bg-transparent px-3 py-2 placeholder:text-slate-400/70 hover:border-slate-400 focus:border-primary dark:border-navy-450 dark:hover:border-navy-400 dark:focus:border-accent"
+      />
+      <p class="text-xs text-slate-400 mt-1">
+        Agencia usada automaticamente nas actions de compra de etiqueta do Melhor Envio.
+      </p>
+    </div>
+
+
+    <div>
+      <label class="block text-sm font-medium text-slate-700 dark:text-navy-200 mb-1">Documento do remetente</label>
+      <input
+        v-model="form.senderDocument"
+        type="text"
+        placeholder="CPF ou CNPJ do remetente"
+        class="form-input w-full rounded-lg border border-slate-300 bg-transparent px-3 py-2 placeholder:text-slate-400/70 hover:border-slate-400 focus:border-primary dark:border-navy-450 dark:hover:border-navy-400 dark:focus:border-accent"
+      />
+      <p class="text-xs text-slate-400 mt-1">
+        Obrigatorio para compra de etiqueta. Pode ser CPF ou CNPJ.
+      </p>
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium text-slate-700 dark:text-navy-200 mb-1">Telefone do remetente</label>
+      <input
+        v-model="form.senderPhone"
+        type="text"
+        placeholder="Telefone do remetente"
+        class="form-input w-full rounded-lg border border-slate-300 bg-transparent px-3 py-2 placeholder:text-slate-400/70 hover:border-slate-400 focus:border-primary dark:border-navy-450 dark:hover:border-navy-400 dark:focus:border-accent"
+      />
+      <p class="text-xs text-slate-400 mt-1">
+        Usado no campo from.phone quando o servico exigir.
+      </p>
+    </div>
+
     <div class="flex items-center gap-3">
       <button
         type="button"
@@ -91,7 +132,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  activate: [form: { clientId: string; clientSecret: string; sandbox: boolean; callbackBaseUrl: string }]
+  activate: [form: { clientId: string; clientSecret: string; sandbox: boolean; callbackBaseUrl: string; extraConfig: string }]
   disable: []
 }>()
 
@@ -100,6 +141,9 @@ const form = reactive({
   clientSecret: '',
   sandbox: true,
   callbackBaseUrl: '',
+  agency: '',
+  senderDocument: '',
+  senderPhone: '',
 })
 
 const currentStatus = computed(() => props.config?.status ?? 'NOT_CONFIGURED')
@@ -116,10 +160,65 @@ watch(() => props.config, (c) => {
     form.sandbox = c.sandbox ?? true
     form.callbackBaseUrl = c.callbackBaseUrl ?? ''
     form.clientSecret = ''
+    form.agency = readAgency(c.extraConfig)
+    form.senderDocument = readSenderDocument(c.extraConfig)
+    form.senderPhone = readSenderPhone(c.extraConfig)
   }
 }, { immediate: true })
 
+function readAgency(extraConfig?: string | null) {
+  if (!extraConfig) return ''
+  try {
+    const parsed = JSON.parse(extraConfig)
+    const agency = parsed?.agency ?? parsed?.melhorenvio?.agency ?? parsed?.defaults?.agency ?? parsed?.defaults?.melhorenvio?.agency
+    return agency == null ? '' : String(agency)
+  } catch {
+    return ''
+  }
+}
+
+function readSenderDocument(extraConfig?: string | null) {
+  if (!extraConfig) return ''
+  try {
+    const parsed = JSON.parse(extraConfig)
+    return String(parsed?.senderDocument ?? parsed?.document ?? parsed?.from?.document ?? '')
+  } catch {
+    return ''
+  }
+}
+
+function readSenderPhone(extraConfig?: string | null) {
+  if (!extraConfig) return ''
+  try {
+    const parsed = JSON.parse(extraConfig)
+    return String(parsed?.senderPhone ?? parsed?.phone ?? parsed?.from?.phone ?? '')
+  } catch {
+    return ''
+  }
+}
+
+function buildExtraConfig() {
+  const payload: Record<string, any> = {}
+  const agency = Number(form.agency)
+  if (Number.isFinite(agency) && agency > 0) {
+    payload.agency = agency
+  }
+  if (form.senderDocument.trim()) {
+    payload.senderDocument = form.senderDocument.trim()
+  }
+  if (form.senderPhone.trim()) {
+    payload.senderPhone = form.senderPhone.trim()
+  }
+  return Object.keys(payload).length ? JSON.stringify(payload) : ''
+}
+
 function handleActivate() {
-  emit('activate', { ...form })
+  emit('activate', {
+    clientId: form.clientId,
+    clientSecret: form.clientSecret,
+    sandbox: form.sandbox,
+    callbackBaseUrl: form.callbackBaseUrl,
+    extraConfig: buildExtraConfig(),
+  })
 }
 </script>

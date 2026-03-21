@@ -24,6 +24,7 @@ export interface ShippingProviderConfigResponse {
   hasToken: boolean
   tokenExpiresAt?: string
   clientId?: string
+  extraConfig?: string
 }
 
 export interface ShippingProviderConfigRequest {
@@ -31,6 +32,32 @@ export interface ShippingProviderConfigRequest {
   clientSecret: string
   sandbox: boolean
   callbackBaseUrl?: string
+  extraConfig?: string
+}
+
+export interface ShippingProviderCatalogSpecialRequest {
+  name: string
+  label: string
+  parentType?: string | null
+  maxSelection?: number | null
+}
+
+export interface ShippingProviderCatalogServiceType {
+  code: string
+  label: string
+  specialRequests?: ShippingProviderCatalogSpecialRequest[]
+}
+
+export interface ShippingProviderCatalogCity {
+  locode: string
+  name: string
+  serviceTypes: ShippingProviderCatalogServiceType[]
+}
+
+export interface ShippingProviderCatalogResponse {
+  cities: ShippingProviderCatalogCity[]
+  serviceTypes: ShippingProviderCatalogServiceType[]
+  specialRequests: ShippingProviderCatalogSpecialRequest[]
 }
 
 export interface ActivationResult {
@@ -44,6 +71,9 @@ export function useProvidersApi() {
 
   const getShippingProvider = (provider: string) =>
     $axios.get<ShippingProviderConfigResponse>(`/api/v1/admin/providers/shipping/${provider}`)
+
+  const previewShippingProviderCatalog = (provider: string, config: ShippingProviderConfigRequest) =>
+    $axios.post<ShippingProviderCatalogResponse>(`/api/v1/admin/providers/shipping/${provider}/catalog`, config)
 
   const activateShippingProvider = (provider: string, config: ShippingProviderConfigRequest) =>
     $axios.put<ActivationResult>(`/api/v1/admin/providers/shipping/${provider}/activate`, config)
@@ -69,6 +99,7 @@ export function useProvidersApi() {
   return {
     listShippingProviders,
     getShippingProvider,
+    previewShippingProviderCatalog,
     activateShippingProvider,
     disableShippingProvider,
     getMelhorEnvioStatus,

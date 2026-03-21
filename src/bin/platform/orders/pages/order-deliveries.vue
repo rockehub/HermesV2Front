@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <DefaultLayout :icon="{ type: 'fa', icon: 'fa-light fa-truck-fast text-[1.2rem]' }" :menu-items="[]">
     <div class="min-h-screen bg-slate-100 px-6 py-6 dark:bg-navy-900">
       <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -46,32 +46,93 @@
                       <span :class="statusPill(delivery.statusCode)" class="rounded-full px-3 py-1 text-xs font-semibold">{{ delivery.statusLabel }}</span>
                       <span class="rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-500 dark:bg-navy-700 dark:text-navy-100">{{ delivery.shippingLabel }}</span>
                       <span v-if="delivery.selectedShippingProvider" class="rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-500 dark:bg-navy-700 dark:text-navy-100">{{ delivery.selectedShippingProvider }}</span>
+                      <span v-if="delivery.providerStatus" class="rounded-full bg-indigo-100 px-3 py-1 text-xs font-medium text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300">{{ delivery.providerStatus }}</span>
                     </div>
                     <h2 class="mt-4 text-xl font-semibold text-slate-900 dark:text-navy-50">{{ delivery.title }}</h2>
                     <p class="mt-2 text-sm text-slate-500 dark:text-navy-300">{{ delivery.addressLabel ?? 'Sem endereco vinculado' }}</p>
                     <p class="mt-1 text-xs text-slate-400 dark:text-navy-400">{{ delivery.warehouseName ?? 'Sem deposito' }}<span v-if="delivery.vendorName"> | {{ delivery.vendorName }}</span></p>
                   </div>
 
-                  <div class="grid gap-3 sm:grid-cols-2 xl:w-[340px]">
+                  <div class="grid gap-3 sm:grid-cols-2 xl:w-[420px]">
                     <InfoMetric label="Frete" :value="formatCurrency(delivery.shippingPriceInCents)" />
                     <InfoMetric label="Codigo do servico" :value="delivery.selectedShippingCode ?? '--'" />
+                    <InfoMetric label="Tracking provider" :value="delivery.trackingNumber ?? '--'" />
+                    <InfoMetric label="Referencia externa" :value="delivery.externalReference ?? '--'" />
+                    <InfoMetric label="Share link" :value="delivery.shareLink ?? '--'" />
+                    <InfoMetric label="Driver" :value="delivery.driverName ?? '--'" />
+                    <InfoMetric label="Telefone driver" :value="delivery.driverPhone ?? '--'" />
+                    <InfoMetric label="Placa" :value="delivery.driverPlateNumber ?? '--'" />
+                    <InfoMetric label="Etiqueta" :value="delivery.labelUrl ?? '--'" />
                     <InfoMetric label="NF-e" :value="delivery.nfeRef ?? '--'" />
-                    <InfoMetric label="Estado fiscal" :value="delivery.nfeState ?? '--'" />
                   </div>
                 </div>
 
-                <div class="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
-                  <div>
+                <div class="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+                  <div class="space-y-4">
                     <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                       <InfoMetric label="Data selecionada" :value="formatDateTime(delivery.selectedDeliveryDate)" />
                       <InfoMetric label="Estimativa interna" :value="formatDateTime(delivery.deliveryEstimateAt)" />
-                      <InfoMetric label="Promessa da entrega" :value="formatDateTime(delivery.promisedDeliveryAt)" />
+                      <InfoMetric label="Promessa da embarque" :value="formatDateTime(delivery.promisedDeliveryAt)" />
                       <InfoMetric label="Cotacao do frete" :value="formatDateTime(delivery.quotedDeliveryAt)" />
                       <InfoMetric label="Enviado em" :value="formatDateTime(delivery.sentAt)" />
                       <InfoMetric label="Entregue em" :value="formatDateTime(delivery.deliveredAt)" />
                     </div>
 
-                    <div class="mt-5 rounded-2xl border border-slate-200 bg-white p-4 dark:border-navy-600 dark:bg-navy-800">
+                    <div class="rounded-2xl border border-slate-200 bg-white p-4 dark:border-navy-600 dark:bg-navy-800">
+                      <div class="flex items-center justify-between gap-3">
+                        <h3 class="text-sm font-semibold uppercase tracking-[0.24em] text-slate-400 dark:text-navy-400">Actions do provider</h3>
+                        <button class="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:border-slate-300 dark:border-navy-600 dark:text-navy-200" type="button" @click="loadShippingActions(delivery.id)">
+                          Atualizar actions
+                        </button>
+                      </div>
+
+                      <div v-if="shippingActionsByDeliveryId[delivery.id]" class="mt-4 space-y-4">
+                        <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                          <InfoMetric label="Provider" :value="shippingActionsByDeliveryId[delivery.id].provider ?? '--'" />
+                          <InfoMetric label="Status provider" :value="shippingActionsByDeliveryId[delivery.id].providerStatus ?? '--'" />
+                          <InfoMetric label="Detalhe status" :value="shippingActionsByDeliveryId[delivery.id].providerStatusDetail ?? '--'" />
+                          <InfoMetric label="Pickup ref" :value="shippingActionsByDeliveryId[delivery.id].pickupReference ?? '--'" />
+                          <InfoMetric label="Share link" :value="shippingActionsByDeliveryId[delivery.id].shareLink ?? '--'" />
+                          <InfoMetric label="Driver" :value="shippingActionsByDeliveryId[delivery.id].driverName ?? '--'" />
+                          <InfoMetric label="Telefone driver" :value="shippingActionsByDeliveryId[delivery.id].driverPhone ?? '--'" />
+                          <InfoMetric label="Placa" :value="shippingActionsByDeliveryId[delivery.id].driverPlateNumber ?? '--'" />
+                        </div>
+
+                        <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                          <button
+                            v-for="action in shippingActionsByDeliveryId[delivery.id].actions"
+                            :key="action.code"
+                            class="rounded-xl px-4 py-2.5 text-sm font-medium text-white transition disabled:cursor-not-allowed disabled:opacity-50"
+                            :class="action.enabled ? 'bg-slate-900 hover:bg-slate-700 dark:bg-primary dark:hover:bg-primary/90' : 'bg-slate-400'"
+                            type="button"
+                            :disabled="!action.enabled || executingActionKey === buildActionKey(delivery.id, action.code)"
+                            @click="runShippingAction(delivery.id, action.code)"
+                          >
+                            {{ executingActionKey === buildActionKey(delivery.id, action.code) ? 'Executando...' : action.label }}
+                          </button>
+                        </div>
+
+                        <div class="rounded-2xl border border-slate-200 bg-white p-4 dark:border-navy-600 dark:bg-navy-800">
+                          <h4 class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400 dark:text-navy-400">Historico operacional</h4>
+                          <div v-if="shippingActionsByDeliveryId[delivery.id].history.length" class="mt-3 space-y-3">
+                            <div v-for="entry in shippingActionsByDeliveryId[delivery.id].history" :key="entry.id" class="rounded-xl border border-slate-100 px-3 py-3 dark:border-navy-700">
+                              <div class="flex flex-wrap items-center justify-between gap-3">
+                                <div>
+                                  <p class="text-sm font-semibold text-slate-900 dark:text-navy-50">{{ formatActionCode(entry.actionType) }}</p>
+                                  <p class="text-xs text-slate-400 dark:text-navy-400">{{ formatDateTime(entry.executedAt) }}<span v-if="entry.externalRef"> | {{ entry.externalRef }}</span></p>
+                                </div>
+                                <span :class="actionStatusPill(entry.status)" class="rounded-full px-3 py-1 text-xs font-semibold">{{ entry.status }}</span>
+                              </div>
+                              <p v-if="entry.errorMessage" class="mt-2 text-xs text-rose-500">{{ entry.errorMessage }}</p>
+                            </div>
+                          </div>
+                          <p v-else class="mt-3 text-sm text-slate-400 dark:text-navy-400">Nenhuma action executada ainda.</p>
+                        </div>
+                      </div>
+                      <p v-else class="mt-4 text-sm text-slate-400 dark:text-navy-400">Carregue as actions da entrega para operar o provider.</p>
+                    </div>
+
+                    <div class="rounded-2xl border border-slate-200 bg-white p-4 dark:border-navy-600 dark:bg-navy-800">
                       <h3 class="text-sm font-semibold uppercase tracking-[0.24em] text-slate-400 dark:text-navy-400">Itens da entrega</h3>
                       <div v-if="delivery.items.length" class="mt-4 space-y-2">
                         <div v-for="item in delivery.items" :key="item.id" class="flex items-center justify-between gap-4 rounded-xl border border-slate-100 px-3 py-2 text-sm dark:border-navy-700">
@@ -117,7 +178,7 @@
               <h3 class="text-sm font-semibold uppercase tracking-[0.24em] text-slate-400 dark:text-navy-400">Leitura operacional</h3>
               <div class="mt-4 space-y-3 text-sm text-slate-500 dark:text-navy-300">
                 <p>Promessa da entrega: usa a melhor data disponivel entre data selecionada, estimativa interna e cotacao do frete.</p>
-                <p>Envio e entrega: quando voce marca como enviado ou entregue, o backend registra as datas operacionais automaticamente.</p>
+                <p>Provider actions: agora a compra, geracao e impressao da etiqueta ficam concentradas no painel de delivery.</p>
                 <p>Fluxo isolado: esta tela trabalha apenas com a logistica do pedido, sem misturar cliente, financeiro e timeline geral.</p>
               </div>
             </article>
@@ -133,7 +194,12 @@ import DefaultLayout from '@/bin/platform/hermes/layouts/default.vue'
 import notification from '@/helpers/utils/notification'
 import { computed, defineComponent, h, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { type OrderDeliveriesDetail, useOrdersApi } from '../composables/useOrdersApi'
+import {
+  type DeliveryShippingActionsDetail,
+  type ExecuteDeliveryShippingActionPayload,
+  type OrderDeliveriesDetail,
+  useOrdersApi,
+} from '../composables/useOrdersApi'
 
 const api = useOrdersApi()
 const route = useRoute()
@@ -145,7 +211,9 @@ const loading = ref(false)
 const errorMessage = ref('')
 const orderDeliveries = ref<OrderDeliveriesDetail | null>(null)
 const savingDeliveryId = ref<string | null>(null)
+const executingActionKey = ref<string | null>(null)
 const draftByDeliveryId = reactive<Record<string, { statusCode: string; review: string }>>({})
+const shippingActionsByDeliveryId = reactive<Record<string, DeliveryShippingActionsDetail>>({})
 
 const InfoMetric = defineComponent({
   props: {
@@ -163,9 +231,17 @@ const InfoMetric = defineComponent({
 function statusPill(statusCode?: string | null) {
   const code = statusCode ?? 'pending'
   if (code === 'delivered') return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
-  if (code === 'shipped' || code === 'in_fulfillment') return 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300'
+  if (code === 'shipped' || code === 'in_fulfillment' || code === 'posted') return 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300'
   if (code === 'failed' || code === 'cancelled') return 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300'
-  if (code === 'ready_for_fulfillment') return 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300'
+  if (code === 'ready_for_fulfillment' || code === 'generated') return 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300'
+  return 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
+}
+
+function actionStatusPill(status?: string | null) {
+  const code = (status ?? '').toUpperCase()
+  if (code === 'SUCCESS') return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
+  if (code === 'FAILED') return 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300'
+  if (code === 'IGNORED') return 'bg-slate-200 text-slate-700 dark:bg-navy-700 dark:text-navy-100'
   return 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
 }
 
@@ -180,6 +256,16 @@ function formatDateTime(value?: string | null) {
   return date.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
 }
 
+function formatActionCode(value?: string | null) {
+  return (value ?? '--').replaceAll('_', ' ').toUpperCase()
+}
+
+function buildActionKey(deliveryId: string, actionCode: string) {
+  return `${deliveryId}:${actionCode}`
+}
+
+
+
 function syncDrafts() {
   const next: Record<string, { statusCode: string; review: string }> = {}
   for (const delivery of orderDeliveries.value?.deliveries ?? []) {
@@ -192,6 +278,48 @@ function syncDrafts() {
   Object.assign(draftByDeliveryId, next)
 }
 
+function buildShippingPayload(): ExecuteDeliveryShippingActionPayload {
+  return {
+    idempotencyKey: crypto?.randomUUID?.() ?? `delivery-${Date.now()}`,
+    payload: {
+      options: {
+        platform: 'Hermes Admin',
+      },
+    },
+  }
+}
+
+async function loadShippingActions(deliveryId: string) {
+  try {
+    const res = await api.getDeliveryShippingActions(orderId.value, deliveryId)
+    shippingActionsByDeliveryId[deliveryId] = res.data.data
+  } catch (error: any) {
+    const message = error?.response?.data?.message ?? 'Falha ao carregar as actions da entrega.'
+    toast({ text: message, variant: 'error' })
+  }
+}
+
+async function runShippingAction(deliveryId: string, actionCode: string) {
+  executingActionKey.value = buildActionKey(deliveryId, actionCode)
+  try {
+    const res = await api.executeDeliveryShippingAction(orderId.value, deliveryId, actionCode, buildShippingPayload())
+    const detail = res.data.data
+    shippingActionsByDeliveryId[deliveryId] = detail
+
+    if (actionCode === 'print_label' && detail.labelUrl) {
+      window.open(detail.labelUrl, '_blank', 'noopener,noreferrer')
+    }
+
+    toast({ text: `Action ${formatActionCode(actionCode)} executada.`, variant: 'success' })
+    await Promise.all([loadDeliveries(), loadShippingActions(deliveryId)])
+  } catch (error: any) {
+    const message = error?.response?.data?.message ?? `Falha ao executar ${formatActionCode(actionCode)}.`
+    toast({ text: message, variant: 'error' })
+  } finally {
+    executingActionKey.value = null
+  }
+}
+
 async function loadDeliveries() {
   if (!orderId.value) return
   loading.value = true
@@ -200,6 +328,9 @@ async function loadDeliveries() {
     const res = await api.getOrderDeliveries(orderId.value)
     orderDeliveries.value = res.data.data
     syncDrafts()
+    for (const delivery of orderDeliveries.value.deliveries) {
+      await loadShippingActions(delivery.id)
+    }
   } catch (error: any) {
     errorMessage.value = error?.response?.data?.message ?? 'Falha ao carregar as entregas do pedido.'
     toast({ text: errorMessage.value, variant: 'error' })

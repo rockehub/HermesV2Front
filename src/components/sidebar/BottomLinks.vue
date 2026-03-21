@@ -1,7 +1,9 @@
 <template>
   <div class="flex flex-col items-center space-y-2 py-3">
     <!-- Settings page -->
+
     <router-link
+      v-if="hasRole(['hermes:management:access'])"
       :to="{ name: 'settings' }"
       class="flex h-9 w-9 items-center justify-center rounded-lg outline-none transition-colors duration-200 hover:bg-primary/20 dark:hover:bg-navy-300/20 text-slate-400"
       title="Configurações"
@@ -25,10 +27,12 @@
 </template>
 
 <script>
-import UserProfilePopper from "@/components/sidebar/UserProfilePopper.vue"
-import { defineComponent } from "vue"
+import UserProfilePopper from '@/components/sidebar/UserProfilePopper.vue'
+import { defineComponent } from 'vue'
+import { hasRole } from '@/helpers/rbac/checks/index.ts'
 export default defineComponent({
   name: 'BottomLinks',
+  methods: { hasRole },
   components: { UserProfilePopper }
 })
 </script>

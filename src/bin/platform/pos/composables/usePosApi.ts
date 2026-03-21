@@ -75,6 +75,7 @@ export interface ShippingOptionItem {
   priceInCents: number
   deliveryDays: number
   error?: string | null
+  providerData?: string | null
 }
 
 export interface DeliveryShippingOptionsSplit {
@@ -99,6 +100,7 @@ export interface SetDeliveryShippingRequest {
   priceInCents: number
   deliveryDays: number
   selectedDate?: string | null
+  providerData?: string | null
 }
 
 export const usePosApi = () => {

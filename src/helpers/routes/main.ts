@@ -2,7 +2,7 @@ import {
   createRouter,
   createWebHistory,
   type NavigationGuardNext,
-  type RouteLocationRaw, type RouteRecordRaw
+  type RouteRecordRaw
 } from 'vue-router'
 import { routes as defaultRoutes } from '@/helpers/routes/routes'
 import { pluginsLoaded, routes } from '@/helpers/extensionLoader/extension-loader'
@@ -19,19 +19,14 @@ const router = createRouter({
 watch(
   () => routes.value,
   (newRoute: any) => {
-    console.log('adding this route', newRoute)
     if (newRoute && Array.isArray(newRoute)) {
       newRoute.forEach((route) => {
         if (route.name && !router.hasRoute(route.name)) {
-          router.addRoute(route)
-          console.info(`Added route: ${route.path}`)
+          router.addRoute(route as RouteRecordRaw)
         }
       })
-    } else if (newRoute) {
-      if (newRoute.name && !router.hasRoute(newRoute.name)) {
-        router.addRoute(newRoute)
-        console.info(`Added route: ${newRoute.path}`)
-      }
+    } else if (newRoute && newRoute.name && !router.hasRoute(newRoute.name)) {
+      router.addRoute(newRoute as RouteRecordRaw)
     }
   },
   { deep: true }
@@ -41,7 +36,6 @@ const pluginManager = usePluginManager()
 
 router.beforeEach(async (to, from, next) => {
   const user = useAuthStore()
-  console.log(to)
 
   await new Promise<boolean>((resolve) => {
     const checkPluginsLoaded = setInterval(() => {
@@ -53,7 +47,6 @@ router.beforeEach(async (to, from, next) => {
   })
 
   let nextCalled = false
-
   const guardedNext: NavigationGuardNext = ((arg?: any) => {
     if (!nextCalled) {
       nextCalled = true
@@ -62,8 +55,6 @@ router.beforeEach(async (to, from, next) => {
       } else {
         next(arg)
       }
-    } else {
-      console.warn('next() was called more than once')
     }
   }) as NavigationGuardNext
 
@@ -76,25 +67,23 @@ router.beforeEach(async (to, from, next) => {
     if (nextCalled) return
   }
 
-  if (to.matched.some((record) => record.meta.auth)) {
-    if (!user.checkAuth()) {
-      if (to.name !== 'login') {
-        return guardedNext({
-          name: 'login',
-          query: { redirect: to.fullPath }
-        })
-      }
-    }
+  if (to.matched.some((record) => record.meta.auth) && !user.checkAuth()) {
+    return guardedNext({ name: 'login', query: { redirect: to.fullPath } })
+  }
+
+  if (user.checkAuth() && user.isBillingOnly && !['billing', 'onboarding', 'select-tenant'].includes(String(to.name))) {
+    return guardedNext({ name: 'billing' })
   }
 
   if (to.meta.roles && !hasRole(to.meta.roles as string[])) {
     return guardedNext({ name: 'dashboard' })
   }
 
-  if (to.matched.some((record) => record.meta.noAuth)) {
-    if (user.checkAuth()) {
-      return guardedNext({ name: 'dashboard' })
+  if (to.matched.some((record) => record.meta.noAuth) && user.checkAuth()) {
+    if (user.isBillingOnly) {
+      return guardedNext({ name: 'billing' })
     }
+    return guardedNext({ name: 'dashboard' })
   }
 
   return guardedNext()

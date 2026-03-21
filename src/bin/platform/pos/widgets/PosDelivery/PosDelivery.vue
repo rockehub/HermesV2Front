@@ -227,6 +227,7 @@ async function selectOption(deliveryId: string | null, opt: any) {
       priceInCents: opt.priceInCents,
       deliveryDays: opt.deliveryDays,
       selectedDate,
+      providerData: opt.providerData ?? null,
     }
     await posStore.setDeliveryShipping(deliveryId, req)
   } finally {

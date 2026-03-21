@@ -61,6 +61,7 @@ export default class HermesPlugin extends ExtensionBase {
           { name: 'hermes:order:manage', description: 'Gerenciar pedidos' },
           { name: 'hermes:customer:read', description: 'Ver clientes' },
           { name: 'hermes:customer:write', description: 'Gerenciar clientes' },
+          { name: 'hermes:management:access', description: 'Permissão de Gerenciamento' }
         ]
       })
     } catch (e) {

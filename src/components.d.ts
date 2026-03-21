@@ -27,6 +27,7 @@ declare module 'vue' {
     HeaderHeader: typeof import('./components/header/header.vue')['default']
     HeaderNotifications: typeof import('./components/header/Notifications.vue')['default']
     HelloWorld: typeof import('./components/HelloWorld.vue')['default']
+    LalamoveConfigForm: typeof import('./bin/platform/providers/components/LalamoveConfigForm.vue')['default']
     LoginForgotPassword: typeof import('./components/login/ForgotPassword.vue')['default']
     LoginFormWrapperComponent: typeof import('./components/login/FormWrapperComponent.vue')['default']
     LoginLoginForm: typeof import('./components/login/LoginForm.vue')['default']

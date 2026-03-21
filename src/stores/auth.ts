@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { StorageSerializers, useStorage } from '@vueuse/core'
 import jwt_decode from 'jwt-decode'
 import { $axios } from '@/helpers/integration/integration'
@@ -20,6 +20,14 @@ export const useAuthStore = defineStore('auth', () => {
   const getUser = computed(() => user.value)
   const isAuthenticated = computed(() => !!token.value)
   const isAdmin = computed(() => roles.value.includes('ADMIN'))
+  const isBillingOnly = computed(() => user.value?.tenantAccessStatus === 'BILLING_ONLY' || user.value?.tenantAccessStatus === 'BLOCKED')
+
+  async function fetchUserProfile() {
+    const response = await $axios.get('/api/v1/user')
+    user.value = response.data.data
+    roles.value = response.data.data.roles ?? []
+    return response.data.data as User
+  }
 
   async function changeStatus(status: string) {
     try {
@@ -41,7 +49,6 @@ export const useAuthStore = defineStore('auth', () => {
       const tenantStore = useTenantStore()
 
       if (data.requiresTenantSelection) {
-        // Multiple tenants — store pending state, do not commit token yet
         tenantStore.pendingSelection = true
         tenantStore.pendingEmployee = {
           accessToken: data.accessToken,
@@ -52,19 +59,14 @@ export const useAuthStore = defineStore('auth', () => {
         return { requiresTenantSelection: true }
       }
 
-      // Single tenant or no tenant — commit immediately
       token.value = data.accessToken
       tenantStore.setTenants(data.tenants ?? [], data.tenantId ?? null)
-
-      const userData = await $axios.get('/api/v1/user')
-      user.value = userData.data.data
-      roles.value = userData.data.data.roles ?? []
+      await fetchUserProfile()
       permissions.value = response.data.permissions ?? []
-
       return { requiresTenantSelection: false }
     } catch (error: any) {
       if (error.code === 'ERR_NETWORK') {
-        toast({ text: 'Erro de conexão com o servidor', variant: 'error' })
+        toast({ text: 'Erro de conexao com o servidor', variant: 'error' })
       }
       error.response?.data?.errors?.forEach((err: any) => {
         toast({ text: err, variant: 'error' })
@@ -77,20 +79,15 @@ export const useAuthStore = defineStore('auth', () => {
     const tenantStore = useTenantStore()
     try {
       const pendingToken = tenantStore.pendingEmployee?.accessToken
-      // Exchange for a tenant-scoped token — use pending pre-auth token since token.value is not set yet
       const response = await $axios.post(
         '/api/v1/authentication/select-tenant',
         { tenantId },
         pendingToken ? { headers: { Authorization: `Bearer ${pendingToken}` } } : undefined
       )
       const data = response.data.data
-
       token.value = data.accessToken
       tenantStore.selectTenant(tenantId)
-
-      const userData = await $axios.get('/api/v1/user')
-      user.value = userData.data.data
-      roles.value = userData.data.data.roles ?? []
+      await fetchUserProfile()
     } catch (error: any) {
       error.response?.data?.errors?.forEach((err: any) => {
         toast({ text: err, variant: 'error' })
@@ -100,13 +97,8 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function logout() {
-    try {
-      // await $axios.post("/logout");
-      clearAuth()
-      toast({ text: 'Deslogado com sucesso', variant: 'success' })
-    } catch {
-      toast({ text: 'Erro ao deslogar', variant: 'error' })
-    }
+    clearAuth()
+    toast({ text: 'Deslogado com sucesso', variant: 'success' })
   }
 
   function checkAuth() {
@@ -123,7 +115,8 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function forgotPassword(credentials: Credentials) {
     try {
-      await $axios.post('/forgotPassword', { email: credentials.username })
+      await $axios.get(`/api/v1/authentication/password/change/${credentials.username}`)
+      toast({ text: 'Solicitacao enviada', variant: 'success' })
     } catch (error: any) {
       error.response?.data?.errors?.forEach((err: any) => {
         toast({ text: err, variant: 'error' })
@@ -133,15 +126,14 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function resetPassword(credentials: ResetPassword) {
     try {
-      await $axios.post('/resetPassword', {
-        password: credentials.password,
-        password_confirmation: credentials.password_confirmation,
-        code: credentials.code
+      await $axios.post(`/api/v1/authentication/password/change/${credentials.code}`, {
+        newPassword: credentials.password,
+        matchingPassword: credentials.password_confirmation
       })
       toast({ text: 'Senha alterada com sucesso', variant: 'success' })
     } catch (error: any) {
       if (error.code === 'ERR_NETWORK') {
-        toast({ text: 'Erro de conexão com o servidor', variant: 'error' })
+        toast({ text: 'Erro de conexao com o servidor', variant: 'error' })
       }
       error.response?.data?.errors?.forEach((err: any) => {
         toast({ text: err, variant: 'error' })
@@ -166,6 +158,8 @@ export const useAuthStore = defineStore('auth', () => {
     getUser,
     isAuthenticated,
     isAdmin,
+    isBillingOnly,
+    fetchUserProfile,
     changeStatus,
     login,
     selectTenant,
