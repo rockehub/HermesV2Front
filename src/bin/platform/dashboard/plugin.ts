@@ -11,12 +11,7 @@ import { DynamicChartWidget } from '@/bin/platform/dashboard/components/dynamicC
 export default class DashboardPlugin extends ExtensionBase {
   name = 'dashboard'
   component = DashBoardPage
-  globalWidgets = [
-    Divisor,
-    WidgetAreaWidget,
-    WelcomeWidget,
-    DynamicChartWidget
-  ]
+  globalWidgets = [Divisor, WidgetAreaWidget, WelcomeWidget, DynamicChartWidget]
   routes = [
     {
       name: 'dashboard',
@@ -28,14 +23,16 @@ export default class DashboardPlugin extends ExtensionBase {
   languages = {
     pt: pt
   }
-  menuItem: Ref<MenuItem[]> = ref([{
-    name: 'dashboard',
-    icon: {
-      icon: 'dashboard',
-      type: 'material'
-    },
-    label: 'Dashboard'
-  }])
+  menuItem: Ref<MenuItem[]> = ref([
+    {
+      name: 'dashboard',
+      icon: {
+        icon: 'fa-solid fa-chart-line',
+        type: 'fa'
+      },
+      label: 'Dashboard'
+    }
+  ])
 
   async boot(): Promise<void> {
     console.info('dashboard plugin booted')
