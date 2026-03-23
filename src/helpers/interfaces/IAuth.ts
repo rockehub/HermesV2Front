@@ -35,4 +35,5 @@ export interface User {
   isAdmin?: boolean
   tenantAccessStatus?: 'FULL' | 'BILLING_ONLY' | 'BLOCKED' | null
   blockedReason?: string | null
+  storeSetupComplete?: boolean
 }

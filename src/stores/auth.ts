@@ -21,6 +21,7 @@ export const useAuthStore = defineStore('auth', () => {
   const isAuthenticated = computed(() => !!token.value)
   const isAdmin = computed(() => roles.value.includes('ADMIN'))
   const isBillingOnly = computed(() => user.value?.tenantAccessStatus === 'BILLING_ONLY' || user.value?.tenantAccessStatus === 'BLOCKED')
+  const isStoreSetupComplete = computed(() => user.value?.storeSetupComplete === true)
 
   async function fetchUserProfile() {
     const response = await $axios.get('/api/v1/user')
@@ -159,6 +160,7 @@ export const useAuthStore = defineStore('auth', () => {
     isAuthenticated,
     isAdmin,
     isBillingOnly,
+    isStoreSetupComplete,
     fetchUserProfile,
     changeStatus,
     login,

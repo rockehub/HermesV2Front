@@ -71,8 +71,12 @@ router.beforeEach(async (to, from, next) => {
     return guardedNext({ name: 'login', query: { redirect: to.fullPath } })
   }
 
-  if (user.checkAuth() && user.isBillingOnly && !['billing', 'onboarding', 'select-tenant'].includes(String(to.name))) {
+  if (user.checkAuth() && user.isBillingOnly && !['billing', 'onboarding', 'store-setup', 'select-tenant'].includes(String(to.name))) {
     return guardedNext({ name: 'billing' })
+  }
+
+  if (user.checkAuth() && !user.isStoreSetupComplete && !['store-setup', 'onboarding', 'billing', 'select-tenant'].includes(String(to.name))) {
+    return guardedNext({ name: 'store-setup' })
   }
 
   if (to.meta.roles && !hasRole(to.meta.roles as string[])) {
@@ -82,6 +86,9 @@ router.beforeEach(async (to, from, next) => {
   if (to.matched.some((record) => record.meta.noAuth) && user.checkAuth()) {
     if (user.isBillingOnly) {
       return guardedNext({ name: 'billing' })
+    }
+    if (!user.isStoreSetupComplete) {
+      return guardedNext({ name: 'store-setup' })
     }
     return guardedNext({ name: 'dashboard' })
   }
