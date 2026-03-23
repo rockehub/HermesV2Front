@@ -15,7 +15,7 @@ onMounted(async () => {
     <header class="flex items-center justify-between px-6 py-5 lg:px-12">
       <a href="#" class="flex items-center gap-2">
         <img class="h-10 w-10" src="@/assets/images/brand/logo.png" alt="logo" />
-        <span class="text-lg font-semibold uppercase text-slate-700 dark:text-navy-100">synom</span>
+        <span class="text-lg font-semibold uppercase text-slate-700 dark:text-navy-100">havix</span>
       </a>
       <router-link
         to="/auth/login"
@@ -28,7 +28,7 @@ onMounted(async () => {
     <main class="flex grow flex-col items-center px-6 py-10">
       <div class="w-full max-w-5xl">
         <div class="mb-12 text-center">
-          <p class="text-sm uppercase tracking-[0.3em] text-primary">Hermes SaaS</p>
+          <p class="text-sm uppercase tracking-[0.3em] text-primary">Havix</p>
           <h1 class="mt-3 text-4xl font-semibold text-slate-900 dark:text-navy-100">Planos de assinatura</h1>
           <p class="mt-3 text-slate-500 dark:text-navy-300">Escolha o plano ideal para sua operação de delivery.</p>
         </div>

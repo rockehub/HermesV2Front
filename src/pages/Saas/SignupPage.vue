@@ -70,7 +70,7 @@ async function submit() {
     <header class="flex items-center justify-between px-6 py-5 lg:px-12">
       <a href="#" class="flex items-center gap-2">
         <img class="h-10 w-10" src="@/assets/images/brand/logo.png" alt="logo" />
-        <span class="text-lg font-semibold uppercase text-slate-700 dark:text-navy-100">synom</span>
+        <span class="text-lg font-semibold uppercase text-slate-700 dark:text-navy-100">havix</span>
       </a>
       <div class="flex items-center gap-4 text-sm">
         <router-link
@@ -101,7 +101,7 @@ async function submit() {
           </div>
           <h2 class="mt-4 text-2xl font-semibold text-slate-900 dark:text-navy-100">Conta criada!</h2>
           <p class="mt-2 text-slate-600 dark:text-navy-300">
-            Agora você pode entrar no Hermes para concluir o onboarding.
+            Agora você pode entrar no Havix para concluir o onboarding.
           </p>
           <router-link
             to="/auth/login"
@@ -114,7 +114,7 @@ async function submit() {
         <template v-else>
           <p class="text-sm uppercase tracking-[0.3em] text-primary">Cadastro</p>
           <h1 class="mt-3 text-4xl font-semibold text-slate-900 dark:text-navy-100">Criar conta</h1>
-          <p class="mt-3 text-slate-500 dark:text-navy-300">Cadastre sua empresa e comece a usar o Hermes.</p>
+          <p class="mt-3 text-slate-500 dark:text-navy-300">Cadastre sua empresa e comece a usar o Havix.</p>
 
           <form
             class="mt-10 rounded-3xl border border-slate-200 bg-white p-8 shadow-sm dark:border-navy-500 dark:bg-navy-700"

@@ -3,11 +3,11 @@
     <div class="mt-16">
       <label class="relative flex">
         <Field
-          name="username"
+          name="email"
           :rules="{ required: true, email: true }"
           class="form-input peer w-full rounded-lg bg-slate-150 px-3 py-2 pl-9 ring-primary/50 placeholder:text-slate-400 hover:bg-slate-200 focus:ring dark:bg-navy-900/90 dark:ring-accent/50 dark:placeholder:text-navy-300 dark:hover:bg-navy-900 dark:focus:bg-navy-900"
-          :placeholder="$t('login.username')"
-          type="text"
+          placeholder="seu@email.com"
+          type="email"
           v-model="credentials.username"
         />
 
@@ -30,7 +30,7 @@
           </svg>
         </span>
       </label>
-      <ErrorMessage class="text-tiny+ text-error" name="username" />
+      <ErrorMessage class="text-tiny+ text-error" name="email" />
       <button
         type="submit"
         :disabled="disabled"
@@ -39,7 +39,7 @@
         {{ $t('login.reset') }}
       </button>
       <router-link
-        to="/login"
+        to="/auth/login"
         class="btn mt-10 h-10 w-full bg-primary font-medium text-white hover:bg-primary-focus focus:bg-primary-focus active:bg-primary-focus/90 dark:bg-accent dark:hover:bg-accent-focus dark:focus:bg-accent-focus dark:active:bg-accent/90"
       >
         {{ $t('login.back') }}
@@ -61,9 +61,13 @@ const credentials = reactive({
 
 const disabled = ref(false)
 
-const resetPassword = () => {
+const resetPassword = async () => {
   disabled.value = true
-  authenticator.forgotPassword(credentials)
+  try {
+    await authenticator.forgotPassword(credentials)
+  } finally {
+    disabled.value = false
+  }
 }
 </script>
 
