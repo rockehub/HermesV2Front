@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { $axios } from '@/helpers/integration/integration'
 import notification from '@/helpers/utils/notification'
 import DefaultLayout from '@/bin/platform/hermes/layouts/default.vue'
@@ -14,6 +14,16 @@ interface ImportResult {
   created: boolean
 }
 
+interface Warehouse {
+  id: string
+  name: string
+}
+
+interface Vendor {
+  id: string
+  name: string
+}
+
 const fileInput = ref<HTMLInputElement | null>(null)
 const dragging = ref(false)
 const selectedFile = ref<File | null>(null)
@@ -21,6 +31,12 @@ const preview = ref<string[][]>([])
 const previewHeaders = ref<string[]>([])
 const importing = ref(false)
 const results = ref<ImportResult[] | null>(null)
+
+const allWarehouses = ref<Warehouse[]>([])
+const allVendors = ref<Vendor[]>([])
+const selectedWarehouse = ref<Warehouse | null>(null)
+const selectedVendor = ref<Vendor | null>(null)
+const metaLoading = ref(false)
 
 const EXPECTED_HEADERS = [
   'Código do Produto',
@@ -108,6 +124,28 @@ function clearFile() {
   if (fileInput.value) fileInput.value.value = ''
 }
 
+onMounted(async () => {
+  metaLoading.value = true
+  try {
+    const [whRes, vendorRes] = await Promise.all([
+      $axios.get('/api/v1/data/warehouse?size=200&sort=name,asc'),
+      $axios.get('/api/v1/data/vendor?size=200&sort=name,asc'),
+    ])
+    allWarehouses.value = (whRes.data?._embedded?.warehouse ?? []).map((w: any) => ({
+      id: w.id ?? w._links?.self?.href?.split('/').pop(),
+      name: w.name,
+    }))
+    allVendors.value = (vendorRes.data?._embedded?.vendor ?? []).map((v: any) => ({
+      id: v.id ?? v._links?.self?.href?.split('/').pop(),
+      name: v.name,
+    }))
+  } catch {
+    // non-critical
+  } finally {
+    metaLoading.value = false
+  }
+})
+
 async function doImport() {
   if (!selectedFile.value) return
   importing.value = true
@@ -117,8 +155,32 @@ async function doImport() {
     const response = await $axios.post('/api/v1/admin/products/import', form, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
-    results.value = response.data.data as ImportResult[]
+    const importResults = response.data.data as ImportResult[]
+    results.value = importResults
     notification({ text: response.data.message, variant: 'success' })
+
+    // Apply warehouse and vendor to newly created products
+    const createdIds = importResults.filter((r) => r.success && r.created && r.productId).map((r) => r.productId!)
+    if (createdIds.length > 0) {
+      await Promise.allSettled(
+        createdIds.map(async (productId) => {
+          if (selectedWarehouse.value) {
+            await $axios.put(
+              `/api/v1/data/product/${productId}/warehouses`,
+              `/api/v1/data/warehouse/${selectedWarehouse.value!.id}`,
+              { headers: { 'Content-Type': 'text/uri-list' } }
+            )
+          }
+          if (selectedVendor.value) {
+            await $axios.put(
+              `/api/v1/data/product/${productId}/vendor`,
+              `/api/v1/data/vendor/${selectedVendor.value!.id}`,
+              { headers: { 'Content-Type': 'text/uri-list' } }
+            )
+          }
+        })
+      )
+    }
   } catch (err: any) {
     notification({ text: err.response?.data?.message ?? 'Erro na importação', variant: 'error' })
   } finally {
@@ -261,6 +323,49 @@ async function doImport() {
 
         <!-- Right column: help + action -->
         <div class="space-y-6">
+          <!-- Warehouse + Vendor -->
+          <div
+            class="rounded-2xl border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-700 p-5 space-y-4"
+          >
+            <h2 class="text-sm font-semibold text-slate-700 dark:text-navy-100">
+              <i class="fa-light fa-warehouse mr-1.5 text-indigo-400"></i>
+              Configurações de importação
+            </h2>
+            <div v-if="metaLoading" class="text-center py-2">
+              <i class="fa-light fa-spinner-third animate-spin text-indigo-400"></i>
+            </div>
+            <template v-else>
+              <!-- Warehouse -->
+              <div>
+                <label class="mb-1 block text-xs font-medium text-slate-600 dark:text-navy-300">
+                  Depósito (Warehouse)
+                </label>
+                <select
+                  v-model="selectedWarehouse"
+                  class="w-full rounded-lg border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-700 px-3 py-2 text-sm text-slate-700 dark:text-navy-100 focus:border-indigo-400 focus:outline-none"
+                >
+                  <option :value="null">— Nenhum —</option>
+                  <option v-for="wh in allWarehouses" :key="wh.id" :value="wh">{{ wh.name }}</option>
+                </select>
+                <p class="mt-1 text-[10px] text-slate-400 dark:text-navy-400">Aplicado nos produtos criados (não nos atualizados)</p>
+              </div>
+              <!-- Vendor -->
+              <div>
+                <label class="mb-1 block text-xs font-medium text-slate-600 dark:text-navy-300">
+                  Fornecedor (Vendor)
+                </label>
+                <select
+                  v-model="selectedVendor"
+                  class="w-full rounded-lg border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-700 px-3 py-2 text-sm text-slate-700 dark:text-navy-100 focus:border-indigo-400 focus:outline-none"
+                >
+                  <option :value="null">— Nenhum —</option>
+                  <option v-for="v in allVendors" :key="v.id" :value="v">{{ v.name }}</option>
+                </select>
+                <p class="mt-1 text-[10px] text-slate-400 dark:text-navy-400">Aplicado nos produtos criados (não nos atualizados)</p>
+              </div>
+            </template>
+          </div>
+
           <!-- Import button -->
           <div
             class="rounded-2xl border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-700 p-5"

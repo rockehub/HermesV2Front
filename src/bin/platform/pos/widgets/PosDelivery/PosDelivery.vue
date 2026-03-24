@@ -54,6 +54,10 @@ const allSplitsSelected = computed(() =>
   splits.value.every(s => s.selectedProvider && s.selectedServiceCode)
 )
 
+const unassignedSplits = computed(() =>
+  splits.value.filter(s => !s.warehouseId)
+)
+
 // ------------------------------------------------------------------ helpers
 
 function formatCurrency(cents: number) {
@@ -499,6 +503,20 @@ watch(splits, () => {
           <p v-else-if="splits.length === 0" class="text-center text-[10px] text-slate-400 py-2">
             Nenhuma opção de frete disponível.
           </p>
+
+          <!-- Aviso: produtos sem warehouse -->
+          <div
+            v-if="unassignedSplits.length > 0"
+            class="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 px-3 py-2.5 space-y-1"
+          >
+            <p class="text-xs font-semibold text-amber-700 dark:text-amber-400">
+              <em class="fa-light fa-triangle-exclamation mr-1"></em>
+              {{ unassignedSplits.length === 1 ? '1 grupo sem depósito' : `${unassignedSplits.length} grupos sem depósito` }}
+            </p>
+            <p class="text-[10px] text-amber-600 dark:text-amber-400">
+              Há {{ unassignedSplits.reduce((s, x) => s + x.itemCount, 0) }} {{ unassignedSplits.reduce((s,x) => s+x.itemCount,0) === 1 ? 'item' : 'itens' }} sem warehouse configurado. O pedido pode ser gerado sem deliveries válidas. Configure o warehouse dos produtos antes de finalizar.
+            </p>
+          </div>
 
           <!-- One section per delivery split (warehouse bucket) -->
           <template v-else>

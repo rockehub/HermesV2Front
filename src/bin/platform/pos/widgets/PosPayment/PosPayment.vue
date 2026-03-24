@@ -146,6 +146,22 @@ async function finalize() {
     finalizeError.value = 'Selecione o método de pagamento principal'
     return
   }
+
+  if (posStore.deliveryMode === 'delivery') {
+    const splits = posStore.deliveryShippingOptions
+    const unassigned = splits.filter(s => !s.warehouseId)
+    if (unassigned.length > 0) {
+      const itemCount = unassigned.reduce((s, x) => s + x.itemCount, 0)
+      finalizeError.value = `${itemCount} ${itemCount === 1 ? 'item sem' : 'itens sem'} warehouse configurado — o pedido será gerado sem deliveries válidas. Configure o warehouse dos produtos antes de finalizar.`
+      return
+    }
+    const missing = splits.filter(s => !s.selectedProvider || !s.selectedServiceCode)
+    if (missing.length > 0) {
+      finalizeError.value = `Selecione o frete para ${missing.length === 1 ? 'o depósito' : 'todos os depósitos'} antes de finalizar.`
+      return
+    }
+  }
+
   const ba = billingAddress.value
   if (!ba.name.trim() || !ba.street.trim() || !ba.number.trim() || !ba.district.trim() || !ba.city.trim() || !ba.zip.trim() || !ba.uf.trim()) {
     billingAddressSaved.value = false
