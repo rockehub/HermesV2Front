@@ -222,7 +222,7 @@ async function initEditor() {
   const monaco = await loader.init()
   monacoRef = monaco
 
-  if (!monaco.languages.getLanguages().some((l) => l.id === 'groovy')) {
+  if (!monaco.languages.getLanguages().some((l:any) => l.id === 'groovy')) {
     monaco.languages.register({ id: 'groovy', extensions: ['.groovy'], aliases: ['Groovy'] })
     monaco.languages.setMonarchTokensProvider('groovy', {
       keywords: ['def', 'class', 'return', 'if', 'else', 'for', 'while', 'try', 'catch',
@@ -264,7 +264,7 @@ async function initEditor() {
     padding: { top: 12 }
   })
 
-  editorInstance.onDidChangeModelContent(() => {
+  editorInstance?.onDidChangeModelContent(() => {
     scriptContent.value = editorInstance!.getValue()
     validationResult.value = null
   })
