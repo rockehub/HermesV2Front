@@ -150,37 +150,18 @@ async function doImport() {
   if (!selectedFile.value) return
   importing.value = true
   try {
+    const params = new URLSearchParams()
+    if (selectedWarehouse.value) params.append('warehouseId', selectedWarehouse.value.id)
+    if (selectedVendor.value) params.append('vendorId', selectedVendor.value.id)
+
     const form = new FormData()
     form.append('file', selectedFile.value)
-    const response = await $axios.post('/api/v1/admin/products/import', form, {
+    const url = `/api/v1/admin/products/import${params.toString() ? '?' + params.toString() : ''}`
+    const response = await $axios.post(url, form, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
-    const importResults = response.data.data as ImportResult[]
-    results.value = importResults
+    results.value = response.data.data as ImportResult[]
     notification({ text: response.data.message, variant: 'success' })
-
-    // Apply warehouse and vendor to newly created products
-    const createdIds = importResults.filter((r) => r.success && r.created && r.productId).map((r) => r.productId!)
-    if (createdIds.length > 0) {
-      await Promise.allSettled(
-        createdIds.map(async (productId) => {
-          if (selectedWarehouse.value) {
-            await $axios.put(
-              `/api/v1/data/product/${productId}/warehouses`,
-              `/api/v1/data/warehouse/${selectedWarehouse.value!.id}`,
-              { headers: { 'Content-Type': 'text/uri-list' } }
-            )
-          }
-          if (selectedVendor.value) {
-            await $axios.put(
-              `/api/v1/data/product/${productId}/vendor`,
-              `/api/v1/data/vendor/${selectedVendor.value!.id}`,
-              { headers: { 'Content-Type': 'text/uri-list' } }
-            )
-          }
-        })
-      )
-    }
   } catch (err: any) {
     notification({ text: err.response?.data?.message ?? 'Erro na importação', variant: 'error' })
   } finally {
