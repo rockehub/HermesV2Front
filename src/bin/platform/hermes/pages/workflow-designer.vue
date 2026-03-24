@@ -6,8 +6,9 @@ import { newInstance } from '@jsplumb/browser-ui'
 import type { BrowserJsPlumbInstance } from '@jsplumb/browser-ui'
 
 import DefaultLayout from '@/bin/platform/hermes/layouts/default.vue'
+import ScriptEditorModal from '@/bin/platform/hermes/components/ScriptEditorModal.vue'
 
-type WorkflowNodeType = 'START' | 'ACTION' | 'DECISION' | 'WAIT' | 'END' | 'FAILURE'
+type WorkflowNodeType = 'START' | 'ACTION' | 'DECISION' | 'WAIT' | 'END' | 'FAILURE' | 'SCRIPT'
 type WorkflowExecutionState = 'PENDING' | 'RUNNING' | 'WAITING' | 'COMPLETED' | 'FAILED'
 type WorkflowStepState = 'RUNNING' | 'WAITING' | 'COMPLETED' | 'FAILED' | 'SKIPPED'
 
@@ -44,7 +45,7 @@ type HandlerEntry = {
   label: string
   nodeType: WorkflowNodeType
   ownerTypes: WorkflowOwnerType[]
-  configSchema: 'none' | 'delay' | 'subworkflow'
+  configSchema: 'none' | 'delay' | 'subworkflow' | 'script'
   transitionKeys?: string[]
 }
 
@@ -63,17 +64,22 @@ const NODE_CONNECTION_RULES: Record<WorkflowNodeType, NodeConnectionRule> = {
   ACTION: {
     maxOutgoing: 2,
     maxIncoming: -1,
-    allowedTargetTypes: ['ACTION', 'DECISION', 'WAIT', 'END', 'FAILURE']
+    allowedTargetTypes: ['ACTION', 'DECISION', 'WAIT', 'END', 'FAILURE', 'SCRIPT']
   },
   WAIT: {
     maxOutgoing: 1,
     maxIncoming: -1,
-    allowedTargetTypes: ['ACTION', 'DECISION', 'WAIT', 'END', 'FAILURE']
+    allowedTargetTypes: ['ACTION', 'DECISION', 'WAIT', 'END', 'FAILURE', 'SCRIPT']
   },
   DECISION: {
     maxOutgoing: 2,
     maxIncoming: -1,
-    allowedTargetTypes: ['ACTION', 'DECISION', 'WAIT', 'END', 'FAILURE']
+    allowedTargetTypes: ['ACTION', 'DECISION', 'WAIT', 'END', 'FAILURE', 'SCRIPT']
+  },
+  SCRIPT: {
+    maxOutgoing: 2,
+    maxIncoming: -1,
+    allowedTargetTypes: ['ACTION', 'DECISION', 'WAIT', 'END', 'FAILURE', 'SCRIPT']
   }
 }
 
@@ -176,6 +182,21 @@ const editingNameValue = ref('')
 
 const OWNER_TYPES: WorkflowOwnerType[] = ['ORDER', 'INVOICE', 'DELIVERY', 'PAYMENT', 'GENERIC']
 
+const showScriptEditor = ref(false)
+const scriptEditorNode = ref<WorkflowGraphNode | null>(null)
+
+function openScriptEditor(node: WorkflowGraphNode) {
+  scriptEditorNode.value = node
+  showScriptEditor.value = true
+}
+
+function onScriptSave(configData: string) {
+  if (!scriptEditorNode.value) return
+  const node = nodes.value.find((n) => n.code === scriptEditorNode.value!.code)
+  if (node) node.configData = configData
+  showScriptEditor.value = false
+}
+
 const activeTab = ref<'designer' | 'execucoes'>('designer')
 const executions = ref<WorkflowExecutionDto[]>([])
 const executionTotal = ref(0)
@@ -186,7 +207,7 @@ const executionSteps = ref<Record<string, WorkflowExecutionStepDto[]>>({})
 const executionStepsLoading = ref<Record<string, boolean>>({})
 const executionActionLoading = ref<Record<string, boolean>>({})
 
-const nodeTypes: WorkflowNodeType[] = ['START', 'ACTION', 'DECISION', 'WAIT', 'END', 'FAILURE']
+const nodeTypes: WorkflowNodeType[] = ['START', 'ACTION', 'DECISION', 'WAIT', 'END', 'FAILURE', 'SCRIPT']
 
 const NODE_TYPE_STYLES: Record<
   WorkflowNodeType,
@@ -227,6 +248,12 @@ const NODE_TYPE_STYLES: Record<
     border: 'border-red-400',
     badge: 'bg-red-100 text-red-700 dark:bg-red-800 dark:text-red-200',
     dot: 'bg-red-400'
+  },
+  SCRIPT: {
+    bg: 'bg-teal-50 dark:bg-teal-900/20',
+    border: 'border-teal-400',
+    badge: 'bg-teal-100 text-teal-700 dark:bg-teal-800 dark:text-teal-200',
+    dot: 'bg-teal-400'
   }
 }
 
@@ -267,7 +294,7 @@ const selectedEdge = computed(
   () => edges.value.find((edge) => edgeKey(edge) === selectedEdgeKey.value) ?? null
 )
 
-const selectedNodeConfigSchema = computed((): 'none' | 'delay' | 'subworkflow' => {
+const selectedNodeConfigSchema = computed((): 'none' | 'delay' | 'subworkflow' | 'script' => {
   if (!selectedNode.value?.handler) return 'none'
   return findHandlerEntry(selectedNode.value!.handler)?.configSchema ?? 'none'
 })
@@ -814,6 +841,17 @@ async function saveDefinitionMeta(active?: boolean) {
 
 async function loadGraph(definitionId: string) {
   loading.value = true
+  // Destroy jsPlumb and clear nodes BEFORE the API call so Vue can fully unmount
+  // old node DOM elements (via nextTick) before new ones are created.
+  // Without this, nodes sharing the same code across definitions (e.g. "complete")
+  // are reused by Vue's reconciler while jsPlumb has already mutated them,
+  // causing a "Cannot set properties of null (setting '__vnode')" crash.
+  destroyJsPlumbInstance()
+  nodes.value = []
+  edges.value = []
+  clearNodeSelection()
+  selectedEdgeKey.value = null
+  await nextTick()
   try {
     const response = await $axios.get<WorkflowGraphResponse>(
       `/api/v1/admin/workflows/definitions/${definitionId}/graph`
@@ -1191,7 +1229,12 @@ function endDrag() {
 async function addNodeFromHandler(entry: HandlerEntry, posX?: number, posY?: number) {
   const base = entry.code.replace(/\./g, '_')
   const code = ensureUniqueCode(base)
-  const configData = entry.configSchema === 'delay' ? '{"delaySeconds": 60}' : '{}'
+  const configData =
+    entry.configSchema === 'delay'
+      ? '{"delaySeconds": 60}'
+      : entry.configSchema === 'script'
+        ? JSON.stringify({ language: 'groovy', script: "log.info(\"Executando...\")\nreturn [status: 'SUCCESS', message: 'OK']", timeoutSeconds: 10 })
+        : '{}'
   nodes.value.push({
     id: null,
     code,
@@ -2432,6 +2475,29 @@ onBeforeUnmount(() => {
                   </option>
                 </select>
               </div>
+              <div v-else-if="selectedNodeConfigSchema === 'script'">
+                <label class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-400">Script</label>
+                <div class="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 dark:border-teal-800 dark:bg-teal-900/20">
+                  <p class="text-[10px] text-teal-700 dark:text-teal-300">
+                    <span class="font-semibold">
+                      {{ (() => { try { return JSON.parse(selectedNode.configData || '{}').language ?? 'groovy' } catch { return 'groovy' } })().toUpperCase() }}
+                    </span>
+                    — clique em Editar para abrir o editor
+                  </p>
+                  <p class="mt-1 truncate font-mono text-[10px] text-teal-600 dark:text-teal-400">
+                    {{ (() => { try { const s = JSON.parse(selectedNode.configData || '{}').script ?? ''; return s.split('\n')[0] ?? '' } catch { return '' } })() }}
+                  </p>
+                </div>
+                <button
+                  class="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-teal-300 bg-teal-50 px-3 py-2 text-xs font-medium text-teal-700 transition hover:bg-teal-100 dark:border-teal-700 dark:bg-teal-900/20 dark:text-teal-300 dark:hover:bg-teal-800/30"
+                  @click="openScriptEditor(selectedNode)"
+                >
+                  <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+                  </svg>
+                  Editar script
+                </button>
+              </div>
               <div v-else-if="selectedNodeConfigSchema === 'none' && selectedNode.handler">
                 <span class="text-[11px] text-slate-400 italic">Sem configuração adicional.</span>
               </div>
@@ -3048,6 +3114,15 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </div>
+
+    <!-- Script Editor Modal -->
+    <ScriptEditorModal
+      v-if="scriptEditorNode"
+      v-model="showScriptEditor"
+      :owner-type="selectedDefinition?.ownerType ?? 'ORDER'"
+      :config-data="scriptEditorNode.configData"
+      @save="onScriptSave"
+    />
   </DefaultLayout>
 </template>
 

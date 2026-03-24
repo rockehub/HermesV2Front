@@ -75,6 +75,7 @@ declare module 'vue' {
     ResourceForm: typeof import('./bin/platform/hermes/components/resource/form.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    ScriptEditorModal: typeof import('./bin/platform/hermes/components/ScriptEditorModal.vue')['default']
     SearchbarSearchbar: typeof import('./components/searchbar/Searchbar.vue')['default']
     SearchbarSearchBarMobile: typeof import('./components/searchbar/SearchBarMobile.vue')['default']
     SearchbarSearchContexts: typeof import('./components/searchbar/SearchContexts.vue')['default']
