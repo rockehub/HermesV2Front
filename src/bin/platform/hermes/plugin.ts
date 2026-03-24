@@ -5,6 +5,7 @@ import formPage from './pages/form.vue'
 import workflowDesignerPage from './pages/workflow-designer.vue'
 import productMediaPage from './pages/product-media.vue'
 import productBuilderPage from './pages/product-builder.vue'
+import productImportPage from './pages/product-import.vue'
 import { type Ref, ref } from 'vue'
 import { findMenu } from '@/bin/platform/hermes/classes/MenuUtils'
 import { registerSearchItem } from '@/helpers/search/searchRegistry'
@@ -44,6 +45,12 @@ export default class HermesPlugin extends ExtensionBase {
       name: 'product-builder',
       path: '/products/builder',
       component: productBuilderPage,
+      meta: { auth: true }
+    },
+    {
+      name: 'product-import',
+      path: '/products/import',
+      component: productImportPage,
       meta: { auth: true }
     }
   ]
@@ -85,6 +92,11 @@ export default class HermesPlugin extends ExtensionBase {
         name: 'product-builder',
         label: 'Criador de Produtos',
         icon: { icon: 'fa-light fa-box-open text-[1.2rem]', type: 'fa' }
+      },
+      {
+        name: 'product-import',
+        label: 'Importar Produtos',
+        icon: { icon: 'fa-light fa-file-import text-[1.2rem]', type: 'fa' }
       }
     ]
 
@@ -119,6 +131,17 @@ export default class HermesPlugin extends ExtensionBase {
         type: 'page',
         icon: { icon: 'fa-light fa-box-open text-[1.2rem]', type: 'fa' },
         action: () => router.push({ name: 'product-builder' })
+      },
+      'hermes'
+    )
+
+    registerSearchItem(
+      {
+        name: 'Importar Produtos',
+        keywords: ['importar', 'importação', 'csv', 'produtos', 'upload'],
+        type: 'page',
+        icon: { icon: 'fa-light fa-file-import text-[1.2rem]', type: 'fa' },
+        action: () => router.push({ name: 'product-import' })
       },
       'hermes'
     )
