@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import { usePosStore } from '../../store/usePosStore'
 import { useAuthStore } from '@/stores/auth'
-import { ref } from 'vue'
+import { ref, nextTick } from 'vue'
 
 const posStore = usePosStore()
 const authStore = useAuthStore()
@@ -10,6 +10,26 @@ const canApplyDiscount = authStore.roles.includes('pos:discount:apply') || authS
 
 const discountCode = ref('')
 const applyingDiscount = ref(false)
+
+const editingPriceId = ref<string | null>(null)
+const tempPrice = ref('')
+
+async function startEditPrice(line: any) {
+  editingPriceId.value = line.id
+  tempPrice.value = (line.pricePostTaxes / 100).toFixed(2).replace('.', ',')
+  await nextTick()
+  const el = document.querySelector<HTMLInputElement>(`[data-price-input="${line.id}"]`)
+  el?.focus()
+  el?.select()
+}
+
+async function confirmEditPrice(line: any) {
+  const cents = Math.round(parseFloat(tempPrice.value.replace(',', '.')) * 100)
+  if (!isNaN(cents) && cents > 0 && cents !== line.pricePostTaxes) {
+    await posStore.updateItem(line.id, line.quantity, cents)
+  }
+  editingPriceId.value = null
+}
 
 async function applyDiscount() {
   if (!discountCode.value.trim()) return
@@ -72,8 +92,27 @@ function formatCurrency(cents: number) {
           >
             {{ line.propertiesDescription }}
           </p>
-          <p class="text-[11px] text-slate-500 dark:text-navy-300 mt-0.5">
-            {{ formatCurrency(line.pricePostTaxes) }} × {{ line.quantity }} =
+          <p class="text-[11px] text-slate-500 dark:text-navy-300 mt-0.5 flex items-center gap-1 flex-wrap">
+            <template v-if="canChangePrice && editingPriceId === line.id">
+              <input
+                :data-price-input="line.id"
+                v-model="tempPrice"
+                type="text"
+                inputmode="decimal"
+                class="w-16 rounded border border-primary px-1 py-0.5 text-[11px] text-slate-700 dark:text-navy-100 bg-white dark:bg-navy-700 focus:outline-none"
+                @blur="confirmEditPrice(line)"
+                @keydown.enter.prevent="confirmEditPrice(line)"
+                @keydown.escape="editingPriceId = null"
+              />
+            </template>
+            <template v-else>
+              <span
+                :title="canChangePrice ? 'Clique para alterar o preço' : ''"
+                :class="canChangePrice ? 'cursor-pointer hover:text-primary hover:underline underline-offset-2' : ''"
+                @click="canChangePrice && startEditPrice(line)"
+              >{{ formatCurrency(line.pricePostTaxes) }}</span>
+            </template>
+            × {{ line.quantity }} =
             <span class="font-medium text-slate-700 dark:text-navy-100">{{ formatCurrency(line.totalPostTaxes) }}</span>
           </p>
         </div>

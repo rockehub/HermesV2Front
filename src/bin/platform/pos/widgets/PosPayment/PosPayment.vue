@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { usePosStore } from '../../store/usePosStore'
 import { usePosApi } from '../../composables/usePosApi'
 
@@ -19,6 +19,7 @@ const finalizeError = ref<string | null>(null)
 
 const BILLING_KEY = 'pos_billing_address'
 const billingLoading = ref(false)
+const billingZipLoading = ref(false)
 
 const billingAddress = ref({
   name: '',
@@ -88,6 +89,46 @@ async function saveBillingAddress() {
     } catch { /* ignore — address still saved locally */ }
   }
 }
+
+// ViaCEP for billing address
+async function fetchBillingViaCep(zip: string) {
+  const clean = zip.replace(/\D/g, '')
+  if (clean.length !== 8) return
+  billingZipLoading.value = true
+  try {
+    const res = await fetch(`https://viacep.com.br/ws/${clean}/json/`)
+    const data = await res.json()
+    if (!data.erro) {
+      if (data.logradouro) billingAddress.value.street = data.logradouro
+      if (data.bairro) billingAddress.value.district = data.bairro
+      if (data.localidade) billingAddress.value.city = data.localidade
+      if (data.uf) billingAddress.value.uf = data.uf
+    }
+  } catch { /* ignore */ } finally {
+    billingZipLoading.value = false
+  }
+}
+
+watch(() => billingAddress.value.zip, (val) => {
+  const clean = val.replace(/\D/g, '')
+  if (clean.length === 8) fetchBillingViaCep(clean)
+})
+
+// Clear billing address and reload from backend when customer changes
+watch(() => posStore.cart?.customerId, async (newId, oldId) => {
+  if (newId === oldId) return
+  billingAddress.value = { name: '', street: '', number: '', complement: '', district: '', city: '', zip: '', company: '', document: '', uf: '' }
+  billingAddressSaved.value = false
+  showBillingForm.value = false
+  if (newId) {
+    billingLoading.value = true
+    try {
+      await loadBillingFromBackend()
+    } finally {
+      billingLoading.value = false
+    }
+  }
+})
 
 onMounted(async () => {
   loadBillingFromStorage()
@@ -371,7 +412,10 @@ async function finalize() {
             <input v-model="billingAddress.complement" placeholder="Complemento" class="form-input rounded border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-700 px-2 py-1.5 text-xs" />
             <input v-model="billingAddress.district" placeholder="Bairro *" class="form-input rounded border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-700 px-2 py-1.5 text-xs" />
             <input v-model="billingAddress.city" placeholder="Cidade *" class="form-input rounded border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-700 px-2 py-1.5 text-xs" />
-            <input v-model="billingAddress.zip" placeholder="CEP *" class="form-input rounded border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-700 px-2 py-1.5 text-xs" />
+            <div class="relative">
+              <input v-model="billingAddress.zip" placeholder="CEP *" class="form-input w-full rounded border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-700 px-2 py-1.5 text-xs" :class="billingZipLoading ? 'pr-7' : ''" />
+              <em v-if="billingZipLoading" class="fa-duotone fa-spinner-third fa-spin absolute right-2 top-1/2 -translate-y-1/2 text-primary text-[10px] pointer-events-none"></em>
+            </div>
             <select v-model="billingAddress.uf" class="col-span-2 form-select rounded border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-700 px-2 py-1.5 text-xs">
               <option value="">Estado (UF) *</option>
               <option value="AC">AC — Acre</option>

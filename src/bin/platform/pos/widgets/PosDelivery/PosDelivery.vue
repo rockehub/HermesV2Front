@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { usePosStore } from '../../store/usePosStore'
 import { usePosApi } from '../../composables/usePosApi'
 import type { SetDeliveryShippingRequest } from '../../composables/usePosApi'
@@ -14,6 +14,7 @@ const SHIPPING_KEY = 'pos_shipping_address'
 const addressSaved = ref(false)
 const addressLoading = ref(false)
 const addressError = ref<string | null>(null)
+const zipLoading = ref(false)
 const splitsLoading = ref(false)
 const selectingFor = ref<string | null>(null)   // deliveryId currently being saved
 const pendingSelectionByDelivery = ref<Record<string, { provider: string; serviceCode: string }>>({})
@@ -242,6 +243,31 @@ async function selectOption(deliveryId: string | null, opt: any) {
   }
 }
 
+// ------------------------------------------------------------------ viacep
+
+async function fetchViaCep(zip: string) {
+  const clean = zip.replace(/\D/g, '')
+  if (clean.length !== 8) return
+  zipLoading.value = true
+  try {
+    const res = await fetch(`https://viacep.com.br/ws/${clean}/json/`)
+    const data = await res.json()
+    if (!data.erro) {
+      if (data.logradouro) form.value.street = data.logradouro
+      if (data.bairro) form.value.district = data.bairro
+      if (data.localidade) form.value.city = data.localidade
+      if (data.uf) form.value.uf = data.uf
+    }
+  } catch { /* ignore */ } finally {
+    zipLoading.value = false
+  }
+}
+
+watch(() => form.value.zip, (val) => {
+  const clean = val.replace(/\D/g, '')
+  if (clean.length === 8) fetchViaCep(clean)
+})
+
 // ------------------------------------------------------------------ lifecycle
 
 function loadShippingFromStorage() {
@@ -272,10 +298,20 @@ watch(() => posStore.cartId, () => {
 })
 
 // Reload customer addresses when customer changes
-watch(() => posStore.cart?.customerId, async (newId) => {
-  if (posStore.deliveryMode === 'delivery' && newId) {
-    await loadCustomerAddresses()
-    if (!hasCustomerAddresses.value) {
+watch(() => posStore.cart?.customerId, async (newId, oldId) => {
+  if (newId === oldId) return
+  // Clear form and state whenever the customer changes
+  form.value = { name: '', zip: '', street: '', number: '', complement: '', district: '', city: '', uf: '' }
+  addressSaved.value = false
+  showNewAddressForm.value = false
+  editingAddressId.value = null
+  posStore.customerAddresses.splice(0)
+
+  if (posStore.deliveryMode === 'delivery') {
+    if (newId) {
+      await loadCustomerAddresses()
+      showNewAddressForm.value = !hasCustomerAddresses.value
+    } else {
       showNewAddressForm.value = true
     }
   }
@@ -407,8 +443,12 @@ watch(splits, () => {
               <input v-model="form.name" type="text" placeholder="Nome do destinatário *"
                 class="form-input w-full rounded-lg border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-700 px-3 py-2 text-sm text-slate-700 dark:text-navy-100 focus:border-primary focus:outline-none" />
               <div class="grid grid-cols-2 gap-2">
-                <input v-model="form.zip" type="text" placeholder="CEP *" maxlength="9"
-                  class="form-input w-full rounded-lg border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-700 px-3 py-2 text-sm text-slate-700 dark:text-navy-100 focus:border-primary focus:outline-none" />
+                <div class="relative">
+                  <input v-model="form.zip" type="text" placeholder="CEP *" maxlength="9"
+                    class="form-input w-full rounded-lg border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-700 px-3 py-2 text-sm text-slate-700 dark:text-navy-100 focus:border-primary focus:outline-none"
+                    :class="zipLoading ? 'pr-8' : ''" />
+                  <em v-if="zipLoading" class="fa-duotone fa-spinner-third fa-spin absolute right-2.5 top-1/2 -translate-y-1/2 text-primary text-xs pointer-events-none"></em>
+                </div>
                 <input v-model="form.city" type="text" placeholder="Cidade *"
                   class="form-input w-full rounded-lg border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-700 px-3 py-2 text-sm text-slate-700 dark:text-navy-100 focus:border-primary focus:outline-none" />
               </div>

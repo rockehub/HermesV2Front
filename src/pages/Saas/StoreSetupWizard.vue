@@ -105,6 +105,19 @@ function setDefaultCurrency(index: number) {
   currencies.value.forEach((c, i) => (c.isDefault = i === index))
 }
 
+function toggleCurrency(index: number) {
+  const c = currencies.value[index]
+  // Prevent deselecting the last selected currency
+  if (c.selected && currencies.value.filter(x => x.selected).length === 1) return
+  c.selected = !c.selected
+  // If we deselected the default, reassign to first remaining selected
+  if (!c.selected && c.isDefault) {
+    c.isDefault = false
+    const first = currencies.value.find(x => x.selected)
+    if (first) first.isDefault = true
+  }
+}
+
 const selectedCurrencies = computed(() => currencies.value.filter(c => c.selected))
 const hasDefaultCurrency = computed(() => currencies.value.some(c => c.selected && c.isDefault))
 
@@ -427,22 +440,28 @@ onMounted(async () => {
               <div
                 v-for="(c, i) in currencies"
                 :key="c.symbol"
-                class="flex items-center justify-between rounded-xl border p-3 transition-colors"
+                class="flex cursor-pointer items-center justify-between rounded-xl border p-3 transition-colors"
                 :class="c.selected
                   ? 'border-primary/30 bg-primary/5 dark:border-primary/40 dark:bg-primary/10'
                   : 'border-slate-200 dark:border-navy-500'"
+                @click="toggleCurrency(i)"
               >
-                <label class="flex cursor-pointer items-center gap-3">
-                  <input type="checkbox" v-model="c.selected" class="form-checkbox h-4 w-4 rounded text-primary" />
+                <div class="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    :checked="c.selected"
+                    class="form-checkbox h-4 w-4 rounded text-primary"
+                    @click.stop="toggleCurrency(i)"
+                  />
                   <span class="text-sm font-medium text-slate-800 dark:text-navy-50">
                     {{ c.name }}
                     <span class="ml-1 font-normal text-slate-400 dark:text-navy-300">({{ c.symbol }})</span>
                   </span>
-                </label>
+                </div>
                 <button
                   v-if="c.selected"
                   type="button"
-                  @click="setDefaultCurrency(i)"
+                  @click.stop="setDefaultCurrency(i)"
                   class="ml-2 rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors"
                   :class="c.isDefault
                     ? 'bg-primary text-white'
