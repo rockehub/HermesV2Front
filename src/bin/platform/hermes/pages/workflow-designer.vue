@@ -145,11 +145,13 @@ const jsPlumbInstance = ref<BrowserJsPlumbInstance | null>(null)
 const suppressJsPlumbEvents = ref(false)
 const zoomLevel = ref(1)
 const selectedNodeCodes = ref<string[]>([])
+const panX = ref(0)
+const panY = ref(0)
 const panState = ref<{
   startClientX: number
   startClientY: number
-  startScrollLeft: number
-  startScrollTop: number
+  startPanX: number
+  startPanY: number
 } | null>(null)
 const dragState = ref<
   | {
@@ -172,6 +174,8 @@ const transientSourceCode = ref('')
 const transientTargetCode = ref('')
 
 const sidebarCollapsed = ref(false)
+const leftPanelOpen = ref(true)
+const rightPanelOpen = ref(true)
 const showCreateModal = ref(false)
 const createModalOwnerType = ref<WorkflowOwnerType>('ORDER')
 const createModalCode = ref('')
@@ -537,8 +541,8 @@ function canvasPointFromClient(clientX: number, clientY: number) {
   if (!canvas) return { x: 0, y: 0 }
   const rect = canvas.getBoundingClientRect()
   return {
-    x: (clientX - rect.left + canvas.scrollLeft) / zoomLevel.value,
-    y: (clientY - rect.top + canvas.scrollTop) / zoomLevel.value
+    x: (clientX - rect.left - panX.value) / zoomLevel.value,
+    y: (clientY - rect.top - panY.value) / zoomLevel.value
   }
 }
 
@@ -550,17 +554,40 @@ async function repaintCanvas() {
 }
 
 function setZoom(nextZoom: number) {
-  zoomLevel.value = Math.min(2, Math.max(0.5, Math.round(nextZoom * 100) / 100))
+  zoomLevel.value = Math.min(2, Math.max(0.25, Math.round(nextZoom * 100) / 100))
+  repaintCanvas()
+}
+
+function zoomToPoint(nextZoom: number, clientX: number, clientY: number) {
+  const canvas = canvasRef.value
+  if (!canvas) return
+  const rect = canvas.getBoundingClientRect()
+  const mx = clientX - rect.left
+  const my = clientY - rect.top
+  // Stage point under cursor must stay fixed after zoom
+  const stageX = (mx - panX.value) / zoomLevel.value
+  const stageY = (my - panY.value) / zoomLevel.value
+  const clamped = Math.min(2, Math.max(0.25, Math.round(nextZoom * 100) / 100))
+  panX.value = mx - stageX * clamped
+  panY.value = my - stageY * clamped
+  zoomLevel.value = clamped
+  repaintCanvas()
+}
+
+function onWheelCanvas(event: WheelEvent) {
+  event.preventDefault()
+  const delta = event.deltaY > 0 ? -0.1 : 0.1
+  zoomToPoint(zoomLevel.value + delta, event.clientX, event.clientY)
 }
 
 function beginPan(event: MouseEvent) {
-  if (event.button !== 1 || !canvasRef.value) return
+  if (event.button !== 1) return
   event.preventDefault()
   panState.value = {
     startClientX: event.clientX,
     startClientY: event.clientY,
-    startScrollLeft: canvasRef.value.scrollLeft,
-    startScrollTop: canvasRef.value.scrollTop
+    startPanX: panX.value,
+    startPanY: panY.value
   }
 }
 
@@ -1165,11 +1192,9 @@ function beginMarqueeSelection(event: MouseEvent) {
 }
 
 function onMouseMove(event: MouseEvent) {
-  if (panState.value && canvasRef.value) {
-    canvasRef.value.scrollLeft =
-      panState.value.startScrollLeft - (event.clientX - panState.value.startClientX)
-    canvasRef.value.scrollTop =
-      panState.value.startScrollTop - (event.clientY - panState.value.startClientY)
+  if (panState.value) {
+    panX.value = panState.value.startPanX + (event.clientX - panState.value.startClientX)
+    panY.value = panState.value.startPanY + (event.clientY - panState.value.startClientY)
     return
   }
 
@@ -1535,293 +1560,389 @@ onBeforeUnmount(() => {
 })
 </script>
 
+
 <template>
   <DefaultLayout
     :icon="{ type: 'fa', icon: 'fa-light fa-diagram-project text-[1.2rem]' }"
     :menu-items="[]"
+    :full-canvas="true"
   >
-    <div class="flex h-full flex-col gap-4 p-1">
-      <!-- Header -->
+    <div class="workflow-root absolute inset-0 overflow-hidden">
+
+      <!-- ───── FULL-SCREEN CANVAS ───── -->
       <div
-        class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm dark:border-navy-600 dark:bg-navy-700"
+        v-show="activeTab === 'designer'"
+        ref="canvasRef"
+        class="workflow-canvas absolute inset-0 overflow-hidden"
+        :style="{
+          cursor: panState ? 'grabbing' : undefined,
+          backgroundSize: `${28 * zoomLevel}px ${28 * zoomLevel}px`,
+          backgroundPosition: `${panX % (28 * zoomLevel)}px ${panY % (28 * zoomLevel)}px`
+        }"
+        @mousedown="beginPan"
+        @mousedown.middle.prevent
+        @wheel.prevent="onWheelCanvas"
+        @dragover.prevent
+        @drop.prevent="dropOnCanvas"
       >
-        <div class="flex items-center gap-3">
+        <div
+          ref="stageRef"
+          class="workflow-stage absolute origin-top-left"
+          :style="{
+            transform: `translate(${panX}px, ${panY}px) scale(${zoomLevel})`,
+            width: `${stageSize.width}px`,
+            height: `${stageSize.height}px`
+          }"
+          @mousedown.self="beginMarqueeSelection"
+        >
+          <!-- SVG fallback connections -->
+          <svg
+            v-if="!jsPlumbInstance"
+            class="absolute inset-0 pointer-events-none"
+            :width="stageSize.width"
+            :height="stageSize.height"
+            style="z-index: 1"
+          >
+            <defs>
+              <marker id="workflow-arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L0,6 L9,3 z" fill="#6366f1"></path>
+              </marker>
+            </defs>
+            <g v-for="item in svgEdges" :key="item.key">
+              <path
+                :d="item.curve"
+                fill="none"
+                marker-end="url(#workflow-arrow)"
+                :stroke="selectedEdgeKey === item.key ? '#4f46e5' : '#6366f1'"
+                :stroke-width="selectedEdgeKey === item.key ? 3 : 2"
+                stroke-opacity="0.7"
+                class="pointer-events-auto cursor-pointer transition-all"
+                @click.stop="((selectedEdgeKey = item.key), clearNodeSelection())"
+              />
+              <text
+                v-if="item.edge.transitionKey"
+                :x="item.midX"
+                :y="item.midY - 6"
+                text-anchor="middle"
+                class="text-[10px] pointer-events-none"
+                fill="#6366f1"
+                font-size="10"
+                font-family="sans-serif"
+              >{{ item.edge.transitionKey }}</text>
+            </g>
+          </svg>
+
+          <!-- Nodes -->
           <div
-            class="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-100 dark:bg-indigo-900/40"
+            v-for="node in nodes"
+            :id="nodeElementId(node.code)"
+            :key="node.code"
+            class="workflow-node absolute shadow-md transition-shadow"
+            :class="[
+              node.type === 'DECISION' ? 'decision-node' : 'rounded-xl border-2',
+              node.type !== 'DECISION' ? NODE_TYPE_STYLES[node.type].bg : '',
+              node.type !== 'DECISION'
+                ? isNodeSelected(node.code)
+                  ? 'border-indigo-500 shadow-indigo-200 ring-2 ring-indigo-300/50 dark:shadow-indigo-900'
+                  : NODE_TYPE_STYLES[node.type].border + ' hover:shadow-lg'
+                : ''
+            ]"
+            :style="{
+              width: `${nodeDimensions(node).width}px`,
+              height: `${nodeDimensions(node).height}px`,
+              left: `${node.posX ?? 80}px`,
+              top: `${node.posY ?? 80}px`,
+              zIndex: isNodeSelected(node.code) ? 10 : 2
+            }"
+            @mousedown="beginDrag($event, node.code)"
+            @click.stop="setSelectedNodes([node.code], node.code)"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              class="h-5 w-5 text-indigo-600 dark:text-indigo-300"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M13 10V3L4 14h7v7l9-11h-7z"
-              />
-            </svg>
-          </div>
-          <div>
-            <h1 class="text-lg font-semibold text-slate-800 dark:text-navy-50">
-              Workflow Designer
-            </h1>
-            <p class="text-xs text-slate-500 dark:text-navy-300">
-              Designer visual de fluxos com jsPlumb
-              <span
-                v-if="selectedDefinition"
-                class="ml-1 font-medium text-indigo-600 dark:text-indigo-400"
+            <!-- DECISION diamond -->
+            <template v-if="node.type === 'DECISION'">
+              <div class="decision-diamond" :class="isNodeSelected(node.code) ? 'decision-diamond--selected' : ''">
+                <div class="decision-content">
+                  <span class="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300">{{ node.name }}</span>
+                  <span class="text-[9px] text-amber-600/70 dark:text-amber-400/70 truncate max-w-[100px]">{{ node.handler || 'sem handler' }}</span>
+                </div>
+              </div>
+              <div class="node-port node-port--false" title="false — arraste para conectar"><span class="node-port-label">F</span></div>
+              <div class="node-port node-port--true" title="true — arraste para conectar"><span class="node-port-label">T</span></div>
+            </template>
+
+            <!-- Standard node -->
+            <template v-else>
+              <div
+                class="flex items-center gap-2 rounded-t-[10px] border-b px-3 py-2"
+                :class="
+                  NODE_TYPE_STYLES[node.type].badge.includes('emerald') ? 'border-emerald-200 dark:border-emerald-700'
+                  : NODE_TYPE_STYLES[node.type].badge.includes('blue') ? 'border-blue-200 dark:border-blue-700'
+                  : NODE_TYPE_STYLES[node.type].badge.includes('amber') ? 'border-amber-200 dark:border-amber-700'
+                  : NODE_TYPE_STYLES[node.type].badge.includes('purple') ? 'border-purple-200 dark:border-purple-700'
+                  : NODE_TYPE_STYLES[node.type].badge.includes('red') ? 'border-red-200 dark:border-red-700'
+                  : 'border-slate-200 dark:border-slate-600'
+                "
               >
-                — {{ selectedDefinition.name }}
-              </span>
-            </p>
+                <span class="h-2 w-2 rounded-full" :class="NODE_TYPE_STYLES[node.type].dot"></span>
+                <span class="text-[10px] font-bold uppercase tracking-wider" :class="NODE_TYPE_STYLES[node.type].badge.split(' ').slice(1).join(' ')">{{ node.type }}</span>
+                <span class="ml-auto text-[10px] text-slate-400 dark:text-navy-300">{{ node.code }}</span>
+              </div>
+              <div class="px-3 py-2">
+                <div class="text-sm font-semibold text-slate-800 dark:text-navy-50 truncate">{{ node.name }}</div>
+                <div v-if="node.handler" class="mt-0.5 truncate text-[11px] text-slate-500 dark:text-navy-300">{{ node.handler }}</div>
+                <div v-else class="mt-0.5 text-[11px] italic text-slate-400 dark:text-navy-400">Sem handler</div>
+              </div>
+              <div class="node-port" title="Arraste para conectar"></div>
+            </template>
           </div>
+
+          <!-- Marquee selection box -->
+          <div
+            v-if="marqueeSelectionBox"
+            class="selection-box absolute z-30"
+            :style="{
+              left: `${marqueeSelectionBox.left}px`,
+              top: `${marqueeSelectionBox.top}px`,
+              width: `${marqueeSelectionBox.width}px`,
+              height: `${marqueeSelectionBox.height}px`
+            }"
+          ></div>
         </div>
-        <div class="flex items-center gap-2">
-          <span
-            class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium"
-            :class="
-              jsPlumbInstance
-                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
-                : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
-            "
+
+        <!-- Connection error toast -->
+        <transition name="fade">
+          <div
+            v-if="connectionError"
+            class="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-medium text-red-700 shadow-lg dark:border-red-700 dark:bg-red-900/40 dark:text-red-300"
           >
-            <span
-              class="h-1.5 w-1.5 rounded-full"
-              :class="jsPlumbInstance ? 'bg-emerald-500' : 'bg-amber-500'"
-            ></span>
-            {{ jsPlumbInstance ? 'jsPlumb ativo' : 'fallback SVG' }}
-          </span>
-          <button
-            class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-400 dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100"
-            type="button"
-            @click="selectedDefinitionId && loadGraph(selectedDefinitionId)"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              class="h-4 w-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-              />
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
             </svg>
-            Recarregar
-          </button>
-          <button
-            class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-50"
-            type="button"
-            :disabled="saving || !selectedDefinitionId"
-            @click="saveGraph"
-          >
-            <svg
-              v-if="!saving"
-              xmlns="http://www.w3.org/2000/svg"
-              class="h-4 w-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"
-              />
+            {{ connectionError }}
+          </div>
+        </transition>
+
+        <!-- Loading overlay -->
+        <div
+          v-if="loading"
+          class="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-white/80 backdrop-blur-sm dark:bg-navy-900/80"
+          style="z-index: 20"
+        >
+          <svg class="h-8 w-8 animate-spin text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <span class="text-sm font-medium text-slate-600 dark:text-navy-200">Carregando fluxo...</span>
+        </div>
+
+        <!-- Empty state -->
+        <div
+          v-else-if="!nodes.length && selectedDefinitionId"
+          class="absolute inset-0 flex flex-col items-center justify-center gap-3"
+          style="z-index: 1"
+        >
+          <div class="flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 dark:bg-navy-600">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7"/>
             </svg>
-            <svg
-              v-else
-              xmlns="http://www.w3.org/2000/svg"
-              class="h-4 w-4 animate-spin"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-              />
-            </svg>
-            {{ saving ? 'Salvando...' : 'Salvar fluxo' }}
-          </button>
+          </div>
+          <p class="text-sm text-slate-500 dark:text-navy-300">Nenhum nó no fluxo. Adicione um nó no painel esquerdo.</p>
         </div>
       </div>
 
-      <!-- Validation errors -->
+      <!-- ───── TOP FLOATING TOOLBAR ───── -->
+      <div class="absolute top-3 left-3 right-3 z-30 flex items-center gap-2 rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2 shadow-lg backdrop-blur-sm dark:border-navy-600/80 dark:bg-navy-800/90">
+
+        <!-- Left panel toggle -->
+        <button
+          class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-indigo-600 dark:hover:bg-navy-700 dark:hover:text-indigo-400"
+          :class="leftPanelOpen ? 'bg-slate-100 text-indigo-600 dark:bg-navy-700 dark:text-indigo-400' : ''"
+          type="button"
+          title="Painel de workflows"
+          @click="leftPanelOpen = !leftPanelOpen"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"/>
+          </svg>
+        </button>
+
+        <!-- Title + definition info -->
+        <div class="flex min-w-0 flex-1 items-center gap-2">
+          <div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-indigo-100 dark:bg-indigo-900/40">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-indigo-600 dark:text-indigo-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            </svg>
+          </div>
+          <span class="shrink-0 text-sm font-semibold text-slate-800 dark:text-navy-50">Workflow Designer</span>
+          <template v-if="selectedDefinition">
+            <span class="text-slate-300 dark:text-navy-600">·</span>
+            <template v-if="editingDefinitionName">
+              <input
+                v-model="editingNameValue"
+                class="rounded border border-indigo-300 px-2 py-0.5 text-sm font-medium text-slate-800 dark:border-indigo-600 dark:bg-navy-600 dark:text-navy-50"
+                @keydown.enter="saveDefinitionMeta()"
+                @keydown.escape="editingDefinitionName = false"
+              />
+              <button class="text-xs text-indigo-600 hover:underline" type="button" @click="saveDefinitionMeta()">Salvar</button>
+              <button class="text-xs text-slate-400 hover:underline" type="button" @click="editingDefinitionName = false">Cancelar</button>
+            </template>
+            <template v-else>
+              <button
+                class="max-w-[160px] truncate text-sm font-medium text-slate-600 transition hover:text-indigo-600 dark:text-navy-200"
+                type="button"
+                title="Clique para editar nome"
+                @click="((editingNameValue = selectedDefinition!.name), (editingDefinitionName = true))"
+              >{{ selectedDefinition.name }}</button>
+              <button
+                class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium transition"
+                :class="selectedDefinition.active
+                  ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300'
+                  : 'bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-navy-600 dark:text-navy-300'"
+                type="button"
+                @click="saveDefinitionMeta(!selectedDefinition.active)"
+              >{{ selectedDefinition.active ? 'ativo' : 'inativo' }}</button>
+            </template>
+          </template>
+        </div>
+
+        <!-- Tabs -->
+        <div class="flex items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-50 p-0.5 dark:border-navy-600 dark:bg-navy-700">
+          <button
+            class="rounded-md px-3 py-1 text-xs font-medium transition"
+            :class="activeTab === 'designer' ? 'bg-white text-indigo-600 shadow-sm dark:bg-navy-600 dark:text-indigo-400' : 'text-slate-500 hover:text-slate-700 dark:text-navy-300'"
+            type="button"
+            @click="activeTab = 'designer'"
+          >Designer</button>
+          <button
+            class="rounded-md px-3 py-1 text-xs font-medium transition disabled:opacity-40"
+            :class="activeTab === 'execucoes' ? 'bg-white text-indigo-600 shadow-sm dark:bg-navy-600 dark:text-indigo-400' : 'text-slate-500 hover:text-slate-700 dark:text-navy-300'"
+            type="button"
+            :disabled="!selectedDefinitionId"
+            @click="activeTab = 'execucoes'"
+          >Execuções</button>
+        </div>
+
+        <!-- Zoom controls -->
+        <div class="flex items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-50 px-1 py-1 dark:border-navy-600 dark:bg-navy-700">
+          <button class="rounded px-2 py-0.5 text-xs text-slate-600 transition hover:bg-white hover:text-indigo-600 dark:text-navy-200 dark:hover:bg-navy-600" type="button" title="Zoom out" @click="setZoom(zoomLevel - 0.1)">−</button>
+          <button class="min-w-[44px] rounded px-2 py-0.5 text-center text-xs text-slate-600 transition hover:bg-white hover:text-indigo-600 dark:text-navy-200 dark:hover:bg-navy-600" type="button" title="Reset zoom" @click="setZoom(1)">{{ Math.round(zoomLevel * 100) }}%</button>
+          <button class="rounded px-2 py-0.5 text-xs text-slate-600 transition hover:bg-white hover:text-indigo-600 dark:text-navy-200 dark:hover:bg-navy-600" type="button" title="Zoom in" @click="setZoom(zoomLevel + 0.1)">+</button>
+        </div>
+
+        <!-- Stats -->
+        <span class="hidden shrink-0 text-[11px] text-slate-400 dark:text-navy-400 sm:block">{{ nodes.length }} nós · {{ edges.length }} arestas</span>
+
+        <!-- jsPlumb status -->
+        <span
+          class="hidden shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium sm:inline-flex"
+          :class="jsPlumbInstance ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'"
+        >
+          <span class="h-1.5 w-1.5 rounded-full" :class="jsPlumbInstance ? 'bg-emerald-500' : 'bg-amber-500'"></span>
+          {{ jsPlumbInstance ? 'jsPlumb' : 'SVG' }}
+        </span>
+
+        <!-- Reload -->
+        <button
+          class="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition hover:border-slate-400 dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100"
+          type="button"
+          @click="selectedDefinitionId && loadGraph(selectedDefinitionId)"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+          Recarregar
+        </button>
+
+        <!-- Save -->
+        <button
+          class="inline-flex shrink-0 items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-xs font-medium text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-50"
+          type="button"
+          :disabled="saving || !selectedDefinitionId"
+          @click="saveGraph"
+        >
+          <svg v-if="!saving" xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/>
+          </svg>
+          <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+          {{ saving ? 'Salvando...' : 'Salvar' }}
+        </button>
+
+        <!-- Right panel toggle -->
+        <button
+          class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-indigo-600 dark:hover:bg-navy-700 dark:hover:text-indigo-400"
+          :class="rightPanelOpen ? 'bg-slate-100 text-indigo-600 dark:bg-navy-700 dark:text-indigo-400' : ''"
+          type="button"
+          title="Inspector"
+          @click="rightPanelOpen = !rightPanelOpen"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- ───── VALIDATION ERRORS TOAST ───── -->
       <transition name="fade">
         <div
           v-if="validationErrors.length"
-          class="mx-4 mb-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 dark:border-red-700 dark:bg-red-900/30"
+          class="absolute left-1/2 top-[68px] z-30 -translate-x-1/2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 shadow-lg dark:border-red-700 dark:bg-red-900/30"
         >
           <div class="flex items-start justify-between gap-2">
             <ul class="space-y-0.5">
-              <li
-                v-for="err in validationErrors"
-                :key="err"
-                class="flex items-center gap-1.5 text-xs text-red-700 dark:text-red-300"
-              >
+              <li v-for="err in validationErrors" :key="err" class="flex items-center gap-1.5 text-xs text-red-700 dark:text-red-300">
                 <span class="mt-px h-1.5 w-1.5 shrink-0 rounded-full bg-red-400"></span>
                 {{ err }}
               </li>
             </ul>
-            <button
-              class="shrink-0 text-red-400 hover:text-red-600"
-              type="button"
-              @click="validationErrors = []"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-4 w-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M6 18L18 6M6 6l12 12"
-                />
+            <button class="shrink-0 text-red-400 hover:text-red-600" type="button" @click="validationErrors = []">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
               </svg>
             </button>
           </div>
         </div>
       </transition>
 
-      <!-- Tabs -->
-      <div class="flex gap-1 border-b border-slate-200 dark:border-navy-600">
-        <button
-          class="px-4 py-2 text-sm font-medium transition border-b-2 -mb-px"
-          :class="
-            activeTab === 'designer'
-              ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
-              : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-navy-300 dark:hover:text-navy-100'
-          "
-          type="button"
-          @click="activeTab = 'designer'"
+      <!-- ───── LEFT FLOATING PANEL ───── -->
+      <transition name="slide-left">
+        <div
+          v-if="leftPanelOpen && activeTab === 'designer'"
+          class="absolute bottom-3 left-3 top-[60px] z-20 flex w-64 flex-col gap-3 overflow-y-auto pt-3 scrollbar-sm"
         >
-          Designer
-        </button>
-        <button
-          class="px-4 py-2 text-sm font-medium transition border-b-2 -mb-px"
-          :class="
-            activeTab === 'execucoes'
-              ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
-              : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-navy-300 dark:hover:text-navy-100'
-          "
-          type="button"
-          :disabled="!selectedDefinitionId"
-          @click="activeTab = 'execucoes'"
-        >
-          Execuções
-        </button>
-      </div>
-
-      <!-- Main content -->
-      <div v-show="activeTab === 'designer'" class="grid min-h-0 flex-1 grid-cols-12 gap-4">
-        <!-- Sidebar esquerdo -->
-        <div class="col-span-12 space-y-4 lg:col-span-3">
-          <!-- Definições (sidebar agrupada) -->
-          <div
-            class="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-navy-600 dark:bg-navy-700"
-          >
-            <div
-              class="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-navy-600"
-            >
-              <h2
-                class="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-navy-300"
-              >
-                Workflows
-              </h2>
-              <button
-                class="rounded p-0.5 text-slate-400 hover:text-indigo-600 transition"
-                type="button"
-                title="Nova definição"
-                @click="openCreateModal('ORDER')"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  class="h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M12 4v16m8-8H4"
-                  />
+          <!-- Workflows list -->
+          <div class="rounded-xl border border-slate-200/80 bg-white/95 shadow-lg backdrop-blur-sm dark:border-navy-600/80 dark:bg-navy-800/95">
+            <div class="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-navy-600">
+              <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-navy-300">Workflows</h2>
+              <button class="rounded p-0.5 text-slate-400 transition hover:text-indigo-600" type="button" title="Nova definição" @click="openCreateModal('ORDER')">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
                 </svg>
               </button>
             </div>
-            <div class="max-h-[320px] overflow-auto p-2">
+            <div class="max-h-[240px] overflow-auto p-2">
               <template v-for="ownerType in OWNER_TYPES" :key="ownerType">
                 <div class="mb-1">
                   <div class="flex items-center justify-between px-1 py-1">
-                    <span
-                      class="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-navy-400"
-                      >{{ ownerType }}</span
-                    >
-                    <button
-                      class="rounded p-0.5 text-slate-300 hover:text-indigo-500 transition"
-                      type="button"
-                      :title="`Nova definição ${ownerType}`"
-                      @click="openCreateModal(ownerType as WorkflowOwnerType)"
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        class="h-3 w-3"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          stroke-width="2"
-                          d="M12 4v16m8-8H4"
-                        />
+                    <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-navy-400">{{ ownerType }}</span>
+                    <button class="rounded p-0.5 text-slate-300 transition hover:text-indigo-500" type="button" :title="`Nova definição ${ownerType}`" @click="openCreateModal(ownerType as WorkflowOwnerType)">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
                       </svg>
                     </button>
                   </div>
-                  <div
-                    v-if="!definitionsByOwnerType[ownerType as WorkflowOwnerType]?.length"
-                    class="px-2 pb-1 text-[11px] italic text-slate-300 dark:text-navy-500"
-                  >
-                    (vazio)
-                  </div>
+                  <div v-if="!definitionsByOwnerType[ownerType as WorkflowOwnerType]?.length" class="px-2 pb-1 text-[11px] italic text-slate-300 dark:text-navy-500">(vazio)</div>
                   <button
                     v-for="definition in definitionsByOwnerType[ownerType as WorkflowOwnerType]"
                     :key="definition.id"
                     class="group mb-0.5 w-full rounded-lg px-2 py-1.5 text-left transition"
-                    :class="
-                      definition.id === selectedDefinitionId
-                        ? 'bg-indigo-50 ring-1 ring-indigo-300 dark:bg-indigo-900/30 dark:ring-indigo-600'
-                        : 'hover:bg-slate-50 dark:hover:bg-navy-600'
-                    "
+                    :class="definition.id === selectedDefinitionId ? 'bg-indigo-50 ring-1 ring-indigo-300 dark:bg-indigo-900/30 dark:ring-indigo-600' : 'hover:bg-slate-50 dark:hover:bg-navy-600'"
                     type="button"
                     @click="selectDefinition(definition.id)"
                   >
                     <div class="flex items-center justify-between gap-1">
-                      <span
-                        class="truncate text-xs font-medium text-slate-700 dark:text-navy-100"
-                        >{{ definition.name }}</span
-                      >
-                      <span
-                        class="h-1.5 w-1.5 shrink-0 rounded-full"
-                        :class="definition.active ? 'bg-emerald-400' : 'bg-slate-300'"
-                        :title="definition.active ? 'ativo' : 'inativo'"
-                      ></span>
+                      <span class="truncate text-xs font-medium text-slate-700 dark:text-navy-100">{{ definition.name }}</span>
+                      <span class="h-1.5 w-1.5 shrink-0 rounded-full" :class="definition.active ? 'bg-emerald-400' : 'bg-slate-300'" :title="definition.active ? 'ativo' : 'inativo'"></span>
                     </div>
                   </button>
                 </div>
@@ -1829,669 +1950,116 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
-          <!-- Paleta de nós -->
-          <div
-            class="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-navy-600 dark:bg-navy-700"
-          >
+          <!-- Handler palette -->
+          <div class="rounded-xl border border-slate-200/80 bg-white/95 shadow-lg backdrop-blur-sm dark:border-navy-600/80 dark:bg-navy-800/95">
             <div class="border-b border-slate-100 px-4 py-3 dark:border-navy-600">
-              <h2
-                class="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-navy-300"
-              >
-                Paleta de handlers
-              </h2>
+              <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-navy-300">Paleta de handlers</h2>
             </div>
             <div class="space-y-1 p-2">
-              <!-- Estruturais -->
-              <div
-                class="mb-1 px-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-navy-400"
-              >
-                Estrutura
-              </div>
-              <div class="grid grid-cols-3 gap-1 mb-2">
+              <div class="mb-1 px-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-navy-400">Estrutura</div>
+              <div class="mb-2 grid grid-cols-3 gap-1">
                 <button
                   v-for="type in ['START', 'END', 'FAILURE'] as WorkflowNodeType[]"
                   :key="type"
-                  class="flex flex-col items-center gap-1 rounded-lg border px-2 py-2 text-[10px] font-medium transition hover:scale-[1.02] cursor-grab active:cursor-grabbing"
-                  :class="
-                    NODE_TYPE_STYLES[type].border +
-                    ' ' +
-                    NODE_TYPE_STYLES[type].bg +
-                    ' ' +
-                    NODE_TYPE_STYLES[type].badge
-                  "
+                  class="flex cursor-grab flex-col items-center gap-1 rounded-lg border px-2 py-2 text-[10px] font-medium transition hover:scale-[1.02] active:cursor-grabbing"
+                  :class="NODE_TYPE_STYLES[type].border + ' ' + NODE_TYPE_STYLES[type].bg + ' ' + NODE_TYPE_STYLES[type].badge"
                   type="button"
                   draggable="true"
-                  @dragstart="
-                    $event.dataTransfer?.setData(
-                      'application/x-workflow-item',
-                      JSON.stringify({ kind: 'structural', nodeType: type })
-                    )
-                  "
+                  @dragstart="$event.dataTransfer?.setData('application/x-workflow-item', JSON.stringify({ kind: 'structural', nodeType: type }))"
                   @click="addNode(type)"
                 >
                   <span class="h-2 w-2 rounded-full" :class="NODE_TYPE_STYLES[type].dot"></span>
                   {{ type }}
                 </button>
               </div>
-              <!-- Handlers -->
-              <div
-                class="mb-1 px-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-navy-400"
-              >
-                Handlers
-              </div>
+              <div class="mb-1 px-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-navy-400">Handlers</div>
               <button
                 v-for="entry in filteredHandlers"
                 :key="entry.code"
-                class="flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition hover:scale-[1.01] cursor-grab active:cursor-grabbing"
-                :class="
-                  entry.code === 'workflow.call-workflow'
-                    ? 'border-purple-300 bg-purple-50 text-purple-700 dark:bg-purple-900/20 dark:text-purple-300 dark:border-purple-600'
-                    : NODE_TYPE_STYLES[entry.nodeType].border +
-                      ' ' +
-                      NODE_TYPE_STYLES[entry.nodeType].bg +
-                      ' ' +
-                      NODE_TYPE_STYLES[entry.nodeType].badge
-                "
+                class="flex w-full cursor-grab items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition hover:scale-[1.01] active:cursor-grabbing"
+                :class="entry.code === 'workflow.call-workflow'
+                  ? 'border-purple-300 bg-purple-50 text-purple-700 dark:border-purple-600 dark:bg-purple-900/20 dark:text-purple-300'
+                  : NODE_TYPE_STYLES[entry.nodeType].border + ' ' + NODE_TYPE_STYLES[entry.nodeType].bg + ' ' + NODE_TYPE_STYLES[entry.nodeType].badge"
                 type="button"
                 draggable="true"
-                @dragstart="
-                  $event.dataTransfer?.setData(
-                    'application/x-workflow-item',
-                    JSON.stringify({ kind: 'handler', code: entry.code })
-                  )
-                "
+                @dragstart="$event.dataTransfer?.setData('application/x-workflow-item', JSON.stringify({ kind: 'handler', code: entry.code }))"
                 @click="addNodeFromHandler(entry)"
               >
-                <span
-                  class="h-2 w-2 shrink-0 rounded-full"
-                  :class="
-                    entry.code === 'workflow.call-workflow'
-                      ? 'bg-purple-400'
-                      : NODE_TYPE_STYLES[entry.nodeType].dot
-                  "
-                ></span>
+                <span class="h-2 w-2 shrink-0 rounded-full" :class="entry.code === 'workflow.call-workflow' ? 'bg-purple-400' : NODE_TYPE_STYLES[entry.nodeType].dot"></span>
                 <span class="truncate">{{ entry.label }}</span>
               </button>
             </div>
           </div>
-
-          <!-- Conectar nós -->
-          <div
-            class="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-navy-600 dark:bg-navy-700"
-          >
-            <div class="border-b border-slate-100 px-4 py-3 dark:border-navy-600">
-              <h2
-                class="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-navy-300"
-              >
-                Conectar nós
-              </h2>
-            </div>
-            <div class="space-y-2 p-3">
-              <select
-                v-model="transientSourceCode"
-                class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100"
-              >
-                <option value="">Origem</option>
-                <option v-for="node in nodes" :key="node.code" :value="node.code">
-                  {{ node.name }}
-                </option>
-              </select>
-              <div class="flex justify-center text-slate-300">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  class="h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M19 14l-7 7m0 0l-7-7m7 7V3"
-                  />
-                </svg>
-              </div>
-              <select
-                v-model="transientTargetCode"
-                class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100"
-              >
-                <option value="">Destino</option>
-                <option v-for="node in nodes" :key="node.code" :value="node.code">
-                  {{ node.name }}
-                </option>
-              </select>
-              <button
-                class="w-full rounded-lg bg-indigo-600 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:opacity-40"
-                type="button"
-                :disabled="!transientSourceCode || !transientTargetCode"
-                @click="addEdge"
-              >
-                Criar transição
-              </button>
-            </div>
-          </div>
         </div>
+      </transition>
 
-        <!-- Canvas central -->
-        <div class="col-span-12 lg:col-span-6">
-          <div
-            class="flex h-full flex-col rounded-xl border border-slate-200 bg-white shadow-sm dark:border-navy-600 dark:bg-navy-700"
-          >
-            <!-- Canvas header -->
-            <div
-              class="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-navy-600"
-            >
-              <div class="flex-1 min-w-0">
-                <template v-if="selectedDefinition && editingDefinitionName">
-                  <div class="flex items-center gap-2">
-                    <input
-                      v-model="editingNameValue"
-                      class="rounded border border-indigo-300 px-2 py-1 text-sm font-medium text-slate-800 dark:border-indigo-600 dark:bg-navy-600 dark:text-navy-50"
-                      @keydown.enter="saveDefinitionMeta()"
-                      @keydown.escape="editingDefinitionName = false"
-                    />
-                    <button
-                      class="text-xs text-indigo-600 hover:underline"
-                      type="button"
-                      @click="saveDefinitionMeta()"
-                    >
-                      Salvar
-                    </button>
-                    <button
-                      class="text-xs text-slate-400 hover:underline"
-                      type="button"
-                      @click="editingDefinitionName = false"
-                    >
-                      Cancelar
-                    </button>
-                  </div>
-                </template>
-                <template v-else>
-                  <div class="flex items-center gap-2 flex-wrap">
-                    <h2
-                      class="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-navy-300"
-                    >
-                      Canvas do fluxo
-                    </h2>
-                    <template v-if="selectedDefinition">
-                      <button
-                        class="truncate text-sm font-medium text-slate-700 dark:text-navy-100 hover:text-indigo-600 transition"
-                        type="button"
-                        title="Clique para editar nome"
-                        @click="
-                          ((editingNameValue = selectedDefinition!.name),
-                          (editingDefinitionName = true))
-                        "
-                      >
-                        {{ selectedDefinition.name }}
-                      </button>
-                      <span class="text-slate-300 dark:text-navy-500">·</span>
-                      <button
-                        class="rounded-full px-2 py-0.5 text-[10px] font-medium transition"
-                        :class="
-                          selectedDefinition.active
-                            ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300'
-                            : 'bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-navy-600 dark:text-navy-300'
-                        "
-                        type="button"
-                        @click="saveDefinitionMeta(!selectedDefinition.active)"
-                      >
-                        {{ selectedDefinition.active ? 'ativo' : 'inativo' }}
-                      </button>
-                    </template>
-                  </div>
-                  <p class="text-[11px] text-slate-400 dark:text-navy-300">
-                    Arraste os nós para reposicionar. Conecte arrastando entre nós no modo jsPlumb.
-                  </p>
-                </template>
-              </div>
-              <div class="flex items-center gap-2 text-xs text-slate-400 ml-2 shrink-0">
-                <div
-                  class="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-1 py-1 dark:border-navy-500 dark:bg-navy-800/50"
-                >
-                  <button
-                    class="rounded px-2 py-1 text-slate-600 transition hover:bg-white hover:text-indigo-600 dark:text-navy-200 dark:hover:bg-navy-600"
-                    type="button"
-                    title="Zoom out"
-                    @click="setZoom(zoomLevel - 0.1)"
-                  >
-                    -
-                  </button>
-                  <button
-                    class="min-w-[56px] rounded px-2 py-1 text-center text-slate-600 transition hover:bg-white hover:text-indigo-600 dark:text-navy-200 dark:hover:bg-navy-600"
-                    type="button"
-                    title="Reset zoom"
-                    @click="setZoom(1)"
-                  >
-                    {{ Math.round(zoomLevel * 100) }}%
-                  </button>
-                  <button
-                    class="rounded px-2 py-1 text-slate-600 transition hover:bg-white hover:text-indigo-600 dark:text-navy-200 dark:hover:bg-navy-600"
-                    type="button"
-                    title="Zoom in"
-                    @click="setZoom(zoomLevel + 0.1)"
-                  >
-                    +
-                  </button>
-                </div>
-                <span>{{ nodes.length }} nós</span>
-                <span class="text-slate-200">·</span>
-                <span>{{ edges.length }} arestas</span>
-              </div>
-            </div>
-
-            <!-- Canvas -->
-            <div
-              ref="canvasRef"
-              class="workflow-canvas relative flex-1 overflow-auto rounded-b-xl"
-              style="min-height: 720px"
-              @mousedown="beginPan"
-              @dragover.prevent
-              @drop.prevent="dropOnCanvas"
-            >
-              <!-- SVG fallback (quando jsPlumb não está ativo) -->
-              <div
-                ref="stageRef"
-                class="workflow-stage relative origin-top-left"
-                :style="{
-                  width: `${stageSize.width}px`,
-                  height: `${stageSize.height}px`,
-                  zoom: zoomLevel
-                }"
-                @mousedown.self="beginMarqueeSelection"
-              >
-                <svg
-                  v-if="!jsPlumbInstance"
-                  class="absolute inset-0 pointer-events-none"
-                  :width="stageSize.width"
-                  :height="stageSize.height"
-                  style="z-index: 1"
-                >
-                  <defs>
-                    <marker
-                      id="workflow-arrow"
-                      markerWidth="10"
-                      markerHeight="10"
-                      refX="8"
-                      refY="3"
-                      orient="auto"
-                      markerUnits="strokeWidth"
-                    >
-                      <path d="M0,0 L0,6 L9,3 z" fill="#6366f1"></path>
-                    </marker>
-                  </defs>
-                  <g v-for="item in svgEdges" :key="item.key">
-                    <path
-                      :d="item.curve"
-                      fill="none"
-                      marker-end="url(#workflow-arrow)"
-                      :stroke="selectedEdgeKey === item.key ? '#4f46e5' : '#6366f1'"
-                      :stroke-width="selectedEdgeKey === item.key ? 3 : 2"
-                      stroke-opacity="0.7"
-                      class="pointer-events-auto cursor-pointer transition-all"
-                      @click.stop="((selectedEdgeKey = item.key), clearNodeSelection())"
-                    />
-                    <text
-                      v-if="item.edge.transitionKey"
-                      :x="item.midX"
-                      :y="item.midY - 6"
-                      text-anchor="middle"
-                      class="text-[10px] pointer-events-none"
-                      fill="#6366f1"
-                      font-size="10"
-                      font-family="sans-serif"
-                    >
-                      {{ item.edge.transitionKey }}
-                    </text>
-                  </g>
-                </svg>
-
-                <!-- Nós -->
-                <div
-                  v-for="node in nodes"
-                  :id="nodeElementId(node.code)"
-                  :key="node.code"
-                  class="workflow-node absolute shadow-md transition-shadow"
-                  :class="[
-                    node.type === 'DECISION' ? 'decision-node' : 'rounded-xl border-2',
-                    node.type !== 'DECISION' ? NODE_TYPE_STYLES[node.type].bg : '',
-                    node.type !== 'DECISION'
-                      ? isNodeSelected(node.code)
-                        ? 'border-indigo-500 shadow-indigo-200 ring-2 ring-indigo-300/50 dark:shadow-indigo-900'
-                        : NODE_TYPE_STYLES[node.type].border + ' hover:shadow-lg'
-                      : ''
-                  ]"
-                  :style="{
-                    width: `${nodeDimensions(node).width}px`,
-                    height: `${nodeDimensions(node).height}px`,
-                    left: `${node.posX ?? 80}px`,
-                    top: `${node.posY ?? 80}px`,
-                    zIndex: isNodeSelected(node.code) ? 10 : 2
-                  }"
-                  @mousedown="beginDrag($event, node.code)"
-                  @click.stop="setSelectedNodes([node.code], node.code)"
-                >
-                  <!-- DECISION: losango -->
-                  <template v-if="node.type === 'DECISION'">
-                    <div
-                      class="decision-diamond"
-                      :class="isNodeSelected(node.code) ? 'decision-diamond--selected' : ''"
-                    >
-                      <div class="decision-content">
-                        <span
-                          class="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300"
-                          >{{ node.name }}</span
-                        >
-                        <span
-                          class="text-[9px] text-amber-600/70 dark:text-amber-400/70 truncate max-w-[100px]"
-                          >{{ node.handler || 'sem handler' }}</span
-                        >
-                      </div>
-                    </div>
-                    <!-- porta false (esquerda-baixo) -->
-                    <div class="node-port node-port--false" title="false — arraste para conectar">
-                      <span class="node-port-label">F</span>
-                    </div>
-                    <!-- porta true (direita-baixo) -->
-                    <div class="node-port node-port--true" title="true — arraste para conectar">
-                      <span class="node-port-label">T</span>
-                    </div>
-                  </template>
-
-                  <!-- Nó padrão -->
-                  <template v-else>
-                    <!-- Header do nó -->
-                    <div
-                      class="flex items-center gap-2 rounded-t-[10px] border-b px-3 py-2"
-                      :class="
-                        NODE_TYPE_STYLES[node.type].badge.includes('emerald')
-                          ? 'border-emerald-200 dark:border-emerald-700'
-                          : NODE_TYPE_STYLES[node.type].badge.includes('blue')
-                            ? 'border-blue-200 dark:border-blue-700'
-                            : NODE_TYPE_STYLES[node.type].badge.includes('amber')
-                              ? 'border-amber-200 dark:border-amber-700'
-                              : NODE_TYPE_STYLES[node.type].badge.includes('purple')
-                                ? 'border-purple-200 dark:border-purple-700'
-                                : NODE_TYPE_STYLES[node.type].badge.includes('red')
-                                  ? 'border-red-200 dark:border-red-700'
-                                  : 'border-slate-200 dark:border-slate-600'
-                      "
-                    >
-                      <span
-                        class="h-2 w-2 rounded-full"
-                        :class="NODE_TYPE_STYLES[node.type].dot"
-                      ></span>
-                      <span
-                        class="text-[10px] font-bold uppercase tracking-wider"
-                        :class="NODE_TYPE_STYLES[node.type].badge.split(' ').slice(1).join(' ')"
-                        >{{ node.type }}</span
-                      >
-                      <span class="ml-auto text-[10px] text-slate-400 dark:text-navy-300">{{
-                        node.code
-                      }}</span>
-                    </div>
-                    <!-- Body do nó -->
-                    <div class="px-3 py-2">
-                      <div class="text-sm font-semibold text-slate-800 dark:text-navy-50 truncate">
-                        {{ node.name }}
-                      </div>
-                      <div
-                        v-if="node.handler"
-                        class="mt-0.5 truncate text-[11px] text-slate-500 dark:text-navy-300"
-                      >
-                        {{ node.handler }}
-                      </div>
-                      <div
-                        v-else
-                        class="mt-0.5 text-[11px] italic text-slate-400 dark:text-navy-400"
-                      >
-                        Sem handler
-                      </div>
-                    </div>
-                    <!-- Handle de saída -->
-                    <div class="node-port" title="Arraste para conectar"></div>
-                  </template>
-                </div>
-
-                <div
-                  v-if="marqueeSelectionBox"
-                  class="selection-box absolute z-30"
-                  :style="{
-                    left: `${marqueeSelectionBox.left}px`,
-                    top: `${marqueeSelectionBox.top}px`,
-                    width: `${marqueeSelectionBox.width}px`,
-                    height: `${marqueeSelectionBox.height}px`
-                  }"
-                ></div>
-              </div>
-
-              <!-- Connection error toast -->
-              <transition name="fade">
-                <div
-                  v-if="connectionError"
-                  class="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-medium text-red-700 shadow-lg dark:border-red-700 dark:bg-red-900/40 dark:text-red-300"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="h-4 w-4 shrink-0"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                  {{ connectionError }}
-                </div>
-              </transition>
-
-              <!-- Loading overlay -->
-              <div
-                v-if="loading"
-                class="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-b-xl bg-white/80 backdrop-blur-sm dark:bg-navy-900/80"
-                style="z-index: 20"
-              >
-                <svg
-                  class="h-8 w-8 animate-spin text-indigo-500"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    class="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    stroke-width="4"
-                  ></circle>
-                  <path
-                    class="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  ></path>
-                </svg>
-                <span class="text-sm font-medium text-slate-600 dark:text-navy-200"
-                  >Carregando fluxo...</span
-                >
-              </div>
-
-              <!-- Empty state -->
-              <div
-                v-else-if="!nodes.length && selectedDefinitionId"
-                class="absolute inset-0 flex flex-col items-center justify-center gap-3"
-                style="z-index: 1"
-              >
-                <div
-                  class="flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 dark:bg-navy-600"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="h-8 w-8 text-slate-400"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="1.5"
-                      d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7"
-                    />
-                  </svg>
-                </div>
-                <p class="text-sm text-slate-500 dark:text-navy-300">
-                  Nenhum nó no fluxo. Adicione um nó no painel esquerdo.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Inspector direito -->
-        <div class="col-span-12 space-y-4 lg:col-span-3">
-          <!-- Nó selecionado -->
+      <!-- ───── RIGHT FLOATING PANEL (Inspector) ───── -->
+      <transition name="slide-right">
+        <div
+          v-if="rightPanelOpen && activeTab === 'designer'"
+          class="absolute bottom-3 right-3 top-[60px] z-20 w-72 overflow-y-auto pt-3 scrollbar-sm"
+        >
+          <!-- Node inspector -->
           <div
             v-if="selectedNode"
-            class="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-navy-600 dark:bg-navy-700"
+            class="rounded-xl border border-slate-200/80 bg-white/95 shadow-lg backdrop-blur-sm dark:border-navy-600/80 dark:bg-navy-800/95"
           >
-            <div
-              class="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-navy-600"
-            >
+            <div class="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-navy-600">
               <div class="flex items-center gap-2">
-                <span
-                  class="h-2 w-2 rounded-full"
-                  :class="NODE_TYPE_STYLES[selectedNode.type].dot"
-                ></span>
-                <h2
-                  class="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-navy-300"
-                >
-                  Nó selecionado
-                </h2>
+                <span class="h-2 w-2 rounded-full" :class="NODE_TYPE_STYLES[selectedNode.type].dot"></span>
+                <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-navy-300">Nó selecionado</h2>
               </div>
-              <button
-                class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-red-600 transition hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30"
-                type="button"
-                @click="removeSelectedNode"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  class="h-3.5 w-3.5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                  />
+              <button class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-red-600 transition hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30" type="button" @click="removeSelectedNode">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
                 </svg>
                 Remover
               </button>
             </div>
             <div class="space-y-3 p-4">
               <div>
-                <label
-                  class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-400"
-                  >Nome</label
-                >
-                <input
-                  v-model="selectedNode.name"
-                  class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100"
-                  placeholder="Nome do nó"
-                />
+                <label class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-400">Nome</label>
+                <input v-model="selectedNode.name" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100" placeholder="Nome do nó"/>
               </div>
               <div>
-                <label
-                  class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-400"
-                  >Código</label
-                >
-                <input
-                  v-model="selectedNode.code"
-                  class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-mono text-slate-700 shadow-sm dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100"
-                  placeholder="code"
-                />
+                <label class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-400">Código</label>
+                <input v-model="selectedNode.code" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-mono text-slate-700 shadow-sm dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100" placeholder="code"/>
               </div>
               <div>
-                <label
-                  class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-400"
-                  >Tipo</label
-                >
-                <select
-                  v-model="selectedNode.type"
-                  class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100"
-                >
+                <label class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-400">Tipo</label>
+                <select v-model="selectedNode.type" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100">
                   <option v-for="type in nodeTypes" :key="type" :value="type">{{ type }}</option>
                 </select>
               </div>
               <div>
-                <label
-                  class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-400"
-                  >Handler</label
-                >
-                <select
-                  v-model="selectedNode.handler"
-                  class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100"
-                >
+                <label class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-400">Handler</label>
+                <select v-model="selectedNode.handler" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100">
                   <option value="">Sem handler</option>
-                  <option v-for="entry in handlerRegistry" :key="entry.code" :value="entry.code">
-                    {{ entry.label }} ({{ entry.code }})
-                  </option>
+                  <option v-for="entry in handlerRegistry" :key="entry.code" :value="entry.code">{{ entry.label }} ({{ entry.code }})</option>
                 </select>
               </div>
-              <!-- Config dinâmica baseada no configSchema -->
+              <!-- Dynamic config -->
               <div v-if="selectedNodeConfigSchema === 'delay'">
-                <label
-                  class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-400"
-                  >Delay (segundos)</label
-                >
-                <input
-                  type="number"
-                  :value="getDelaySeconds()"
-                  class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100"
-                  @input="setDelaySeconds(Number(($event.target as HTMLInputElement).value))"
-                />
+                <label class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-400">Delay (segundos)</label>
+                <input type="number" :value="getDelaySeconds()" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100" @input="setDelaySeconds(Number(($event.target as HTMLInputElement).value))"/>
               </div>
               <div v-else-if="selectedNodeConfigSchema === 'subworkflow'">
-                <label
-                  class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-400"
-                  >Sub-workflow</label
-                >
-                <select
-                  :value="getSubworkflowCode()"
-                  class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100"
-                  @change="setSubworkflowCode(($event.target as HTMLSelectElement).value)"
-                >
+                <label class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-400">Sub-workflow</label>
+                <select :value="getSubworkflowCode()" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100" @change="setSubworkflowCode(($event.target as HTMLSelectElement).value)">
                   <option value="">Selecione um workflow...</option>
-                  <option v-for="def in definitions" :key="def.id" :value="def.code">
-                    {{ def.name }} ({{ def.code }})
-                  </option>
+                  <option v-for="def in definitions" :key="def.id" :value="def.code">{{ def.name }} ({{ def.code }})</option>
                 </select>
               </div>
               <div v-else-if="selectedNodeConfigSchema === 'script'">
                 <label class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-400">Script</label>
                 <div class="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 dark:border-teal-800 dark:bg-teal-900/20">
                   <p class="text-[10px] text-teal-700 dark:text-teal-300">
-                    <span class="font-semibold">
-                      {{ (() => { try { return JSON.parse(selectedNode.configData || '{}').language ?? 'groovy' } catch { return 'groovy' } })().toUpperCase() }}
-                    </span>
+                    <span class="font-semibold">{{ (() => { try { return JSON.parse(selectedNode.configData || '{}').language?.toUpperCase() ?? 'SCRIPT' } catch { return 'SCRIPT' } })() }}</span>
                     — clique em Editar para abrir o editor
                   </p>
-                  <p class="mt-1 truncate font-mono text-[10px] text-teal-600 dark:text-teal-400">
-                    {{ (() => { try { const s = JSON.parse(selectedNode.configData || '{}').script ?? ''; return s.split('\n')[0] ?? '' } catch { return '' } })() }}
-                  </p>
+                  <p class="mt-1 truncate font-mono text-[10px] text-teal-600 dark:text-teal-400">{{ (() => { try { const s = JSON.parse(selectedNode.configData || '{}').script ?? ''; return s.split('\n')[0] ?? '' } catch { return '' } })() }}</p>
                 </div>
-                <button
-                  class="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-teal-300 bg-teal-50 px-3 py-2 text-xs font-medium text-teal-700 transition hover:bg-teal-100 dark:border-teal-700 dark:bg-teal-900/20 dark:text-teal-300 dark:hover:bg-teal-800/30"
-                  @click="openScriptEditor(selectedNode)"
-                >
+                <button class="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-teal-300 bg-teal-50 px-3 py-2 text-xs font-medium text-teal-700 transition hover:bg-teal-100 dark:border-teal-700 dark:bg-teal-900/20 dark:text-teal-300 dark:hover:bg-teal-800/30" @click="openScriptEditor(selectedNode)">
                   <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
                   </svg>
@@ -2499,620 +2067,258 @@ onBeforeUnmount(() => {
                 </button>
               </div>
               <div v-else-if="selectedNodeConfigSchema === 'none' && selectedNode.handler">
-                <span class="text-[11px] text-slate-400 italic">Sem configuração adicional.</span>
+                <span class="text-[11px] italic text-slate-400">Sem configuração adicional.</span>
               </div>
               <div v-else>
-                <label
-                  class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-400"
-                  >Config JSON</label
-                >
-                <textarea
-                  v-model="selectedNode.configData"
-                  class="min-h-[80px] w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-mono text-slate-700 shadow-sm dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100"
-                  placeholder="{}"
-                ></textarea>
+                <label class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-400">Config JSON</label>
+                <textarea v-model="selectedNode.configData" class="min-h-[80px] w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-mono text-slate-700 shadow-sm dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100" placeholder="{}"></textarea>
               </div>
               <div class="grid grid-cols-2 gap-2">
                 <div>
-                  <label
-                    class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-400"
-                    >Retries</label
-                  >
-                  <input
-                    v-model.number="selectedNode.retryLimit"
-                    type="number"
-                    class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100"
-                    placeholder="0"
-                  />
+                  <label class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-400">Retries</label>
+                  <input v-model.number="selectedNode.retryLimit" type="number" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100" placeholder="0"/>
                 </div>
                 <div>
-                  <label
-                    class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-400"
-                    >Delay (s)</label
-                  >
-                  <input
-                    v-model.number="selectedNode.retryDelaySeconds"
-                    type="number"
-                    class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100"
-                    placeholder="0"
-                  />
+                  <label class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-400">Delay (s)</label>
+                  <input v-model.number="selectedNode.retryDelaySeconds" type="number" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100" placeholder="0"/>
                 </div>
               </div>
-              <label
-                class="flex cursor-pointer items-center gap-2.5 text-sm text-slate-600 dark:text-navy-100"
-              >
-                <input
-                  v-model="selectedNode.continueOnFailure"
-                  type="checkbox"
-                  class="h-4 w-4 rounded border-slate-300 text-indigo-600"
-                />
+              <label class="flex cursor-pointer items-center gap-2.5 text-sm text-slate-600 dark:text-navy-100">
+                <input v-model="selectedNode.continueOnFailure" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-indigo-600"/>
                 Continuar em caso de falha
               </label>
             </div>
           </div>
 
-          <!-- Transição selecionada -->
+          <!-- Edge inspector -->
           <div
             v-else-if="selectedEdge"
-            class="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-navy-600 dark:bg-navy-700"
+            class="rounded-xl border border-slate-200/80 bg-white/95 shadow-lg backdrop-blur-sm dark:border-navy-600/80 dark:bg-navy-800/95"
           >
-            <div
-              class="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-navy-600"
-            >
-              <h2
-                class="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-navy-300"
-              >
-                Transição selecionada
-              </h2>
-              <button
-                class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-red-600 transition hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30"
-                type="button"
-                @click="removeSelectedEdge"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  class="h-3.5 w-3.5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                  />
+            <div class="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-navy-600">
+              <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-navy-300">Transição selecionada</h2>
+              <button class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-red-600 transition hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30" type="button" @click="removeSelectedEdge">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
                 </svg>
                 Remover
               </button>
             </div>
             <div class="space-y-3 p-4">
-              <div
-                class="flex items-center gap-2 rounded-lg bg-indigo-50 px-3 py-2 text-sm dark:bg-indigo-900/30"
-              >
-                <span class="font-mono font-medium text-indigo-700 dark:text-indigo-300">{{
-                  selectedEdge.sourceNodeCode
-                }}</span>
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  class="h-4 w-4 shrink-0 text-indigo-400"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M17 8l4 4m0 0l-4 4m4-4H3"
-                  />
+              <div class="flex items-center gap-2 rounded-lg bg-indigo-50 px-3 py-2 text-sm dark:bg-indigo-900/30">
+                <span class="font-mono font-medium text-indigo-700 dark:text-indigo-300">{{ selectedEdge.sourceNodeCode }}</span>
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"/>
                 </svg>
-                <span class="font-mono font-medium text-indigo-700 dark:text-indigo-300">{{
-                  selectedEdge.targetNodeCode
-                }}</span>
+                <span class="font-mono font-medium text-indigo-700 dark:text-indigo-300">{{ selectedEdge.targetNodeCode }}</span>
               </div>
               <div>
-                <label
-                  class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-400"
-                  >Transition key</label
-                >
-                <input
-                  v-model="selectedEdge.transitionKey"
-                  class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-mono text-slate-700 shadow-sm dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100"
-                  placeholder="ex: success, failure"
-                />
-                <div
-                  v-if="selectedEdgeTransitionSuggestions.length"
-                  class="mt-1.5 flex flex-wrap gap-1"
-                >
+                <label class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-400">Transition key</label>
+                <input v-model="selectedEdge.transitionKey" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-mono text-slate-700 shadow-sm dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100" placeholder="ex: success, failure"/>
+                <div v-if="selectedEdgeTransitionSuggestions.length" class="mt-1.5 flex flex-wrap gap-1">
                   <button
                     v-for="suggestion in selectedEdgeTransitionSuggestions"
                     :key="suggestion"
                     class="rounded px-2 py-0.5 text-[10px] font-medium transition"
-                    :class="
-                      selectedEdge.transitionKey === suggestion
-                        ? 'bg-indigo-500 text-white'
-                        : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-300'
-                    "
+                    :class="selectedEdge.transitionKey === suggestion ? 'bg-indigo-500 text-white' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-300'"
                     type="button"
                     @click="selectedEdge.transitionKey = suggestion"
-                  >
-                    {{ suggestion }}
-                  </button>
+                  >{{ suggestion }}</button>
                 </div>
               </div>
               <div>
-                <label
-                  class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-400"
-                  >Prioridade</label
-                >
-                <input
-                  v-model.number="selectedEdge.priority"
-                  type="number"
-                  class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100"
-                  placeholder="0"
-                />
+                <label class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-400">Prioridade</label>
+                <input v-model.number="selectedEdge.priority" type="number" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100" placeholder="0"/>
               </div>
-              <!-- conditionData visual editor -->
-              <div
-                class="space-y-2.5 rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-navy-600 dark:bg-navy-800/40"
-              >
-                <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                  Condições da aresta
-                </p>
-
-                <!-- Boolean: requiresShipping -->
+              <!-- Condition editor -->
+              <div class="space-y-2.5 rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-navy-600 dark:bg-navy-800/40">
+                <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Condições da aresta</p>
                 <div class="flex items-center justify-between gap-2">
                   <span class="text-[11px] text-slate-600 dark:text-navy-200">Requer frete</span>
-                  <select
-                    v-model="conditionForm.requiresShipping"
-                    class="rounded border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-700 dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100"
-                  >
-                    <option value="">—</option>
-                    <option value="true">Sim</option>
-                    <option value="false">Não</option>
+                  <select v-model="conditionForm.requiresShipping" class="rounded border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-700 dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100">
+                    <option value="">—</option><option value="true">Sim</option><option value="false">Não</option>
                   </select>
                 </div>
-
-                <!-- Boolean: invoiceRequired -->
                 <div class="flex items-center justify-between gap-2">
                   <span class="text-[11px] text-slate-600 dark:text-navy-200">NF obrigatória</span>
-                  <select
-                    v-model="conditionForm.invoiceRequired"
-                    class="rounded border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-700 dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100"
-                  >
-                    <option value="">—</option>
-                    <option value="true">Sim</option>
-                    <option value="false">Não</option>
+                  <select v-model="conditionForm.invoiceRequired" class="rounded border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-700 dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100">
+                    <option value="">—</option><option value="true">Sim</option><option value="false">Não</option>
                   </select>
                 </div>
-
-                <!-- Array: paymentStateIn -->
                 <div>
                   <p class="mb-1 text-[10px] font-medium text-slate-400">Estado de pagamento</p>
                   <div class="flex flex-wrap gap-1.5">
-                    <label
-                      v-for="s in PAYMENT_STATES"
-                      :key="s"
-                      class="flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium transition"
-                      :class="
-                        conditionForm.paymentStateIn.includes(s)
-                          ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300'
-                          : 'bg-slate-100 text-slate-500 dark:bg-navy-600 dark:text-navy-300'
-                      "
-                    >
-                      <input
-                        type="checkbox"
-                        class="h-3 w-3"
-                        :value="s"
-                        v-model="conditionForm.paymentStateIn"
-                      />
-                      {{ s }}
+                    <label v-for="s in PAYMENT_STATES" :key="s" class="flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium transition" :class="conditionForm.paymentStateIn.includes(s) ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300' : 'bg-slate-100 text-slate-500 dark:bg-navy-600 dark:text-navy-300'">
+                      <input type="checkbox" class="h-3 w-3" :value="s" v-model="conditionForm.paymentStateIn"/>{{ s }}
                     </label>
                   </div>
                 </div>
-
-                <!-- Array: deliveryStateIn -->
                 <div>
                   <p class="mb-1 text-[10px] font-medium text-slate-400">Estado de entrega</p>
                   <div class="flex flex-wrap gap-1.5">
-                    <label
-                      v-for="s in DELIVERY_STATES"
-                      :key="s"
-                      class="flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium transition"
-                      :class="
-                        conditionForm.deliveryStateIn.includes(s)
-                          ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300'
-                          : 'bg-slate-100 text-slate-500 dark:bg-navy-600 dark:text-navy-300'
-                      "
-                    >
-                      <input
-                        type="checkbox"
-                        class="h-3 w-3"
-                        :value="s"
-                        v-model="conditionForm.deliveryStateIn"
-                      />
-                      {{ s }}
+                    <label v-for="s in DELIVERY_STATES" :key="s" class="flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium transition" :class="conditionForm.deliveryStateIn.includes(s) ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300' : 'bg-slate-100 text-slate-500 dark:bg-navy-600 dark:text-navy-300'">
+                      <input type="checkbox" class="h-3 w-3" :value="s" v-model="conditionForm.deliveryStateIn"/>{{ s }}
                     </label>
                   </div>
                 </div>
-
-                <!-- Array: invoiceStateIn -->
                 <div>
                   <p class="mb-1 text-[10px] font-medium text-slate-400">Estado de nota fiscal</p>
                   <div class="flex flex-wrap gap-1.5">
-                    <label
-                      v-for="s in INVOICE_STATES"
-                      :key="s"
-                      class="flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium transition"
-                      :class="
-                        conditionForm.invoiceStateIn.includes(s)
-                          ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300'
-                          : 'bg-slate-100 text-slate-500 dark:bg-navy-600 dark:text-navy-300'
-                      "
-                    >
-                      <input
-                        type="checkbox"
-                        class="h-3 w-3"
-                        :value="s"
-                        v-model="conditionForm.invoiceStateIn"
-                      />
-                      {{ s }}
+                    <label v-for="s in INVOICE_STATES" :key="s" class="flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium transition" :class="conditionForm.invoiceStateIn.includes(s) ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300' : 'bg-slate-100 text-slate-500 dark:bg-navy-600 dark:text-navy-300'">
+                      <input type="checkbox" class="h-3 w-3" :value="s" v-model="conditionForm.invoiceStateIn"/>{{ s }}
                     </label>
                   </div>
                 </div>
-
-                <!-- Array: orderSourceIn -->
                 <div>
                   <p class="mb-1 text-[10px] font-medium text-slate-400">Origem do pedido</p>
                   <div class="flex flex-wrap gap-1.5">
-                    <label
-                      v-for="s in ORDER_SOURCES"
-                      :key="s"
-                      class="flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium transition"
-                      :class="
-                        conditionForm.orderSourceIn.includes(s)
-                          ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300'
-                          : 'bg-slate-100 text-slate-500 dark:bg-navy-600 dark:text-navy-300'
-                      "
-                    >
-                      <input
-                        type="checkbox"
-                        class="h-3 w-3"
-                        :value="s"
-                        v-model="conditionForm.orderSourceIn"
-                      />
-                      {{ s }}
+                    <label v-for="s in ORDER_SOURCES" :key="s" class="flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium transition" :class="conditionForm.orderSourceIn.includes(s) ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300' : 'bg-slate-100 text-slate-500 dark:bg-navy-600 dark:text-navy-300'">
+                      <input type="checkbox" class="h-3 w-3" :value="s" v-model="conditionForm.orderSourceIn"/>{{ s }}
                     </label>
                   </div>
                 </div>
-
-                <!-- Active conditions summary -->
-                <p
-                  v-if="selectedEdge.conditionData && selectedEdge.conditionData !== '{}'"
-                  class="mt-1 break-all font-mono text-[9px] text-slate-400"
-                >
-                  {{ selectedEdge.conditionData }}
-                </p>
+                <p v-if="selectedEdge.conditionData && selectedEdge.conditionData !== '{}'" class="mt-1 break-all font-mono text-[9px] text-slate-400">{{ selectedEdge.conditionData }}</p>
               </div>
             </div>
           </div>
 
-          <!-- Placeholder inspector -->
+          <!-- Empty inspector placeholder -->
           <div
             v-else
-            class="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-6 dark:border-navy-600 dark:bg-navy-800/30"
+            class="rounded-xl border border-dashed border-slate-200/80 bg-white/80 p-6 shadow-sm backdrop-blur-sm dark:border-navy-600/80 dark:bg-navy-800/80"
           >
             <div class="flex flex-col items-center gap-3 text-center">
-              <div
-                class="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 dark:bg-navy-600"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  class="h-6 w-6 text-slate-400"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="1.5"
-                    d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"
-                  />
+              <div class="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 dark:bg-navy-600">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"/>
                 </svg>
               </div>
               <div>
                 <p class="text-sm font-medium text-slate-600 dark:text-navy-200">Inspector</p>
-                <p class="mt-1 text-xs text-slate-400 dark:text-navy-400">
-                  Selecione um nó ou uma transição no canvas para editar suas propriedades.
-                </p>
+                <p class="mt-1 text-xs text-slate-400 dark:text-navy-400">Selecione um nó ou transição para editar.</p>
               </div>
             </div>
           </div>
         </div>
-      </div>
+      </transition>
 
-      <!-- Execuções tab -->
-      <div v-show="activeTab === 'execucoes'" class="flex flex-col gap-3 flex-1">
-        <div class="flex items-center justify-between">
-          <span class="text-sm text-slate-500 dark:text-navy-300">
-            {{ executionTotal }} execuç{{ executionTotal === 1 ? 'ão' : 'ões' }} encontradas
-          </span>
-          <button
-            class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition hover:border-slate-400 dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100"
-            type="button"
-            :disabled="executionsLoading"
-            @click="loadExecutions"
-          >
-            Atualizar
-          </button>
-        </div>
-
-        <div v-if="executionsLoading" class="flex items-center justify-center py-12">
-          <svg class="h-6 w-6 animate-spin text-indigo-500" fill="none" viewBox="0 0 24 24">
-            <circle
-              class="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              stroke-width="4"
-            />
-            <path
-              class="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            />
-          </svg>
-        </div>
-
-        <div
-          v-else-if="!executions.length"
-          class="rounded-xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center dark:border-navy-600 dark:bg-navy-800/30"
-        >
-          <p class="text-sm text-slate-400 dark:text-navy-400">
-            Nenhuma execução encontrada para este workflow.
-          </p>
-        </div>
-
-        <div v-else class="space-y-2">
-          <div
-            v-for="exec in executions"
-            :key="exec.id"
-            class="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-navy-600 dark:bg-navy-700"
-          >
-            <!-- Header row -->
-            <div class="flex items-center gap-2 px-4 py-3">
-              <button
-                class="flex min-w-0 flex-1 items-center gap-3 text-left"
-                type="button"
-                @click="toggleExecutionSteps(exec.id)"
-              >
-                <span
-                  class="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold"
-                  :class="executionStateClass(exec.state)"
-                  >{{ exec.state }}</span
-                >
-                <span class="min-w-0 flex-1">
-                  <span
-                    class="block truncate text-sm font-mono text-slate-700 dark:text-navy-100"
-                    >{{ exec.ownerId ?? '—' }}</span
-                  >
-                  <span class="text-[11px] text-slate-400 dark:text-navy-300">
-                    Node: {{ exec.currentNodeCode ?? '—' }}
-                    <template v-if="exec.parentExecutionId"> · Sub-exec</template>
-                  </span>
-                </span>
-                <span class="shrink-0 text-[11px] text-slate-400 dark:text-navy-300">
-                  {{ exec.startedAt ? exec.startedAt.replace('T', ' ').substring(0, 16) : '—' }}
-                </span>
-                <svg
-                  class="h-4 w-4 shrink-0 text-slate-400 transition-transform"
-                  :class="expandedExecutionId === exec.id ? 'rotate-180' : ''"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M19 9l-7 7-7-7"
-                  />
-                </svg>
-              </button>
-
-              <!-- Action buttons -->
-              <div class="flex shrink-0 items-center gap-1">
-                <button
-                  v-if="exec.state === 'FAILED'"
-                  class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-emerald-600 transition hover:bg-emerald-50 disabled:opacity-40 dark:text-emerald-400 dark:hover:bg-emerald-900/30"
-                  type="button"
-                  title="Repetir execução do início"
-                  :disabled="executionActionLoading[exec.id]"
-                  @click.stop="retryExecution(exec.id)"
-                >
-                  <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                    />
-                  </svg>
-                  Retry
-                </button>
-                <button
-                  v-if="exec.state === 'WAITING' || exec.state === 'RUNNING'"
-                  class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-40 dark:text-red-400 dark:hover:bg-red-900/30"
-                  type="button"
-                  title="Cancelar execução"
-                  :disabled="executionActionLoading[exec.id]"
-                  @click.stop="cancelExecution(exec.id)"
-                >
-                  <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
-                  Cancelar
-                </button>
-              </div>
-            </div>
-
-            <!-- Steps + error -->
-            <div
-              v-if="expandedExecutionId === exec.id"
-              class="border-t border-slate-100 dark:border-navy-600 px-4 py-3 space-y-2"
-            >
-              <!-- Error message for FAILED -->
-              <div
-                v-if="exec.state === 'FAILED' && exec.errorMessage"
-                class="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700 dark:bg-red-900/20 dark:border-red-800 dark:text-red-300"
-              >
-                <span class="font-semibold">Erro: </span>{{ exec.errorMessage }}
-              </div>
-              <div
-                v-if="executionStepsLoading[exec.id]"
-                class="py-4 text-center text-sm text-slate-400"
-              >
-                Carregando steps...
-              </div>
-              <div
-                v-else-if="!executionSteps[exec.id]?.length"
-                class="py-4 text-center text-sm text-slate-400"
-              >
-                Nenhum step registrado.
-              </div>
-              <table v-else class="w-full text-xs">
-                <thead>
-                  <tr class="text-left text-[10px] uppercase tracking-wider text-slate-400">
-                    <th class="pb-2 pr-3">Node</th>
-                    <th class="pb-2 pr-3">Handler</th>
-                    <th class="pb-2 pr-3">Estado</th>
-                    <th class="pb-2 pr-3">Tent.</th>
-                    <th class="pb-2">Mensagem</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-100 dark:divide-navy-600">
-                  <tr v-for="step in executionSteps[exec.id]" :key="step.id">
-                    <td class="py-1.5 pr-3 font-mono text-slate-700 dark:text-navy-100">
-                      {{ step.nodeCode }}
-                    </td>
-                    <td class="py-1.5 pr-3 font-mono text-slate-500 dark:text-navy-300">
-                      {{ step.handler ?? '—' }}
-                    </td>
-                    <td class="py-1.5 pr-3 font-semibold" :class="stepStateClass(step.state)">
-                      {{ step.state }}
-                    </td>
-                    <td class="py-1.5 pr-3 text-slate-500">{{ step.attempt }}</td>
-                    <td class="py-1.5 text-slate-500 truncate max-w-[200px]">
-                      {{ step.message ?? '—' }}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
-        <!-- Pagination -->
-        <div v-if="executionTotal > 20" class="flex items-center justify-between pt-2 text-sm">
-          <button
-            class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs disabled:opacity-40"
-            :disabled="executionPage === 0 || executionsLoading"
-            @click="
-              () => {
-                executionPage--
-                loadExecutions()
-              }
-            "
-          >
-            Anterior
-          </button>
-          <span class="text-xs text-slate-500">Pág. {{ executionPage + 1 }}</span>
-          <button
-            class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs disabled:opacity-40"
-            :disabled="(executionPage + 1) * 20 >= executionTotal || executionsLoading"
-            @click="
-              () => {
-                executionPage++
-                loadExecutions()
-              }
-            "
-          >
-            Próxima
-          </button>
-        </div>
-      </div>
-    </div>
-    <!-- Modal: criar definição -->
-    <div
-      v-if="showCreateModal"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-      @click.self="showCreateModal = false"
-    >
+      <!-- ───── EXECUTIONS OVERLAY ───── -->
       <div
-        class="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-navy-600 dark:bg-navy-700"
+        v-if="activeTab === 'execucoes'"
+        class="absolute inset-x-0 bottom-0 top-[60px] z-20 overflow-auto bg-white/95 p-4 pt-3 backdrop-blur-sm dark:bg-navy-800/95"
       >
-        <h3 class="mb-4 text-base font-semibold text-slate-800 dark:text-navy-50">
-          Nova definição de workflow
-        </h3>
-        <div class="space-y-3">
-          <div>
-            <label class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-400"
-              >Tipo</label
-            >
-            <select
-              v-model="createModalOwnerType"
-              class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100"
-            >
-              <option v-for="ot in OWNER_TYPES" :key="ot" :value="ot">{{ ot }}</option>
-            </select>
+        <div class="mx-auto max-w-4xl">
+          <div class="mb-3 flex items-center justify-between">
+            <span class="text-sm text-slate-500 dark:text-navy-300">{{ executionTotal }} execuç{{ executionTotal === 1 ? 'ão' : 'ões' }} encontradas</span>
+            <button
+              class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition hover:border-slate-400 dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100"
+              type="button"
+              :disabled="executionsLoading"
+              @click="loadExecutions"
+            >Atualizar</button>
           </div>
-          <div>
-            <label class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-400"
-              >Code</label
-            >
-            <input
-              v-model="createModalCode"
-              class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-mono text-slate-700 shadow-sm dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100"
-              placeholder="ex: invoice_default"
-            />
+
+          <div v-if="executionsLoading" class="flex items-center justify-center py-12">
+            <svg class="h-6 w-6 animate-spin text-indigo-500" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+            </svg>
           </div>
-          <div>
-            <label class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-400"
-              >Nome</label
-            >
-            <input
-              v-model="createModalName"
-              class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100"
-              placeholder="ex: Invoice Default"
-            />
+
+          <div v-else-if="!executions.length" class="rounded-xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center dark:border-navy-600 dark:bg-navy-800/30">
+            <p class="text-sm text-slate-400 dark:text-navy-400">Nenhuma execução encontrada para este workflow.</p>
           </div>
-        </div>
-        <div class="mt-5 flex justify-end gap-2">
-          <button
-            class="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 transition hover:border-slate-400 dark:border-navy-500 dark:text-navy-200"
-            type="button"
-            @click="showCreateModal = false"
-          >
-            Cancelar
-          </button>
-          <button
-            class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:opacity-50"
-            type="button"
-            :disabled="createModalLoading || !createModalCode || !createModalName"
-            @click="confirmCreateDefinition"
-          >
-            {{ createModalLoading ? 'Criando...' : 'Criar' }}
-          </button>
+
+          <div v-else class="space-y-2">
+            <div v-for="exec in executions" :key="exec.id" class="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-navy-600 dark:bg-navy-700">
+              <div class="flex items-center gap-2 px-4 py-3">
+                <button class="flex min-w-0 flex-1 items-center gap-3 text-left" type="button" @click="toggleExecutionSteps(exec.id)">
+                  <span class="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold" :class="executionStateClass(exec.state)">{{ exec.state }}</span>
+                  <span class="min-w-0 flex-1">
+                    <span class="block truncate font-mono text-sm text-slate-700 dark:text-navy-100">{{ exec.ownerId ?? '—' }}</span>
+                    <span class="text-[11px] text-slate-400 dark:text-navy-300">Node: {{ exec.currentNodeCode ?? '—' }}<template v-if="exec.parentExecutionId"> · Sub-exec</template></span>
+                  </span>
+                  <span class="shrink-0 text-[11px] text-slate-400 dark:text-navy-300">{{ exec.startedAt ? exec.startedAt.replace('T', ' ').substring(0, 16) : '—' }}</span>
+                  <svg class="h-4 w-4 shrink-0 text-slate-400 transition-transform" :class="expandedExecutionId === exec.id ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                  </svg>
+                </button>
+                <div class="flex shrink-0 items-center gap-1">
+                  <button v-if="exec.state === 'FAILED'" class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-emerald-600 transition hover:bg-emerald-50 disabled:opacity-40 dark:text-emerald-400 dark:hover:bg-emerald-900/30" type="button" :disabled="executionActionLoading[exec.id]" @click.stop="retryExecution(exec.id)">
+                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    Retry
+                  </button>
+                  <button v-if="exec.state === 'WAITING' || exec.state === 'RUNNING'" class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-40 dark:text-red-400 dark:hover:bg-red-900/30" type="button" :disabled="executionActionLoading[exec.id]" @click.stop="cancelExecution(exec.id)">
+                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+              <div v-if="expandedExecutionId === exec.id" class="space-y-2 border-t border-slate-100 px-4 py-3 dark:border-navy-600">
+                <div v-if="exec.state === 'FAILED' && exec.errorMessage" class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
+                  <span class="font-semibold">Erro: </span>{{ exec.errorMessage }}
+                </div>
+                <div v-if="executionStepsLoading[exec.id]" class="py-4 text-center text-sm text-slate-400">Carregando steps...</div>
+                <div v-else-if="!executionSteps[exec.id]?.length" class="py-4 text-center text-sm text-slate-400">Nenhum step registrado.</div>
+                <table v-else class="w-full text-xs">
+                  <thead>
+                    <tr class="text-left text-[10px] uppercase tracking-wider text-slate-400">
+                      <th class="pb-2 pr-3">Node</th><th class="pb-2 pr-3">Handler</th><th class="pb-2 pr-3">Estado</th><th class="pb-2 pr-3">Tent.</th><th class="pb-2">Mensagem</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-100 dark:divide-navy-600">
+                    <tr v-for="step in executionSteps[exec.id]" :key="step.id">
+                      <td class="py-1.5 pr-3 font-mono text-slate-700 dark:text-navy-100">{{ step.nodeCode }}</td>
+                      <td class="py-1.5 pr-3 font-mono text-slate-500 dark:text-navy-300">{{ step.handler ?? '—' }}</td>
+                      <td class="py-1.5 pr-3 font-semibold" :class="stepStateClass(step.state)">{{ step.state }}</td>
+                      <td class="py-1.5 pr-3 text-slate-500">{{ step.attempt }}</td>
+                      <td class="max-w-[200px] truncate py-1.5 text-slate-500">{{ step.message ?? '—' }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="executionTotal > 20" class="mt-3 flex items-center justify-between text-sm">
+            <button class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs disabled:opacity-40" :disabled="executionPage === 0 || executionsLoading" @click="() => { executionPage--; loadExecutions() }">Anterior</button>
+            <span class="text-xs text-slate-500">Pág. {{ executionPage + 1 }}</span>
+            <button class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs disabled:opacity-40" :disabled="(executionPage + 1) * 20 >= executionTotal || executionsLoading" @click="() => { executionPage++; loadExecutions() }">Próxima</button>
+          </div>
         </div>
       </div>
+
+      <!-- ───── CREATE DEFINITION MODAL ───── -->
+      <div
+        v-if="showCreateModal"
+        class="absolute inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+        @click.self="showCreateModal = false"
+      >
+        <div class="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-navy-600 dark:bg-navy-700">
+          <h3 class="mb-4 text-base font-semibold text-slate-800 dark:text-navy-50">Nova definição de workflow</h3>
+          <div class="space-y-3">
+            <div>
+              <label class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-400">Tipo</label>
+              <select v-model="createModalOwnerType" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100">
+                <option v-for="ot in OWNER_TYPES" :key="ot" :value="ot">{{ ot }}</option>
+              </select>
+            </div>
+            <div>
+              <label class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-400">Code</label>
+              <input v-model="createModalCode" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-mono text-slate-700 shadow-sm dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100" placeholder="ex: invoice_default"/>
+            </div>
+            <div>
+              <label class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-400">Nome</label>
+              <input v-model="createModalName" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100" placeholder="ex: Invoice Default"/>
+            </div>
+          </div>
+          <div class="mt-5 flex justify-end gap-2">
+            <button class="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 transition hover:border-slate-400 dark:border-navy-500 dark:text-navy-200" type="button" @click="showCreateModal = false">Cancelar</button>
+            <button class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:opacity-50" type="button" :disabled="createModalLoading || !createModalCode || !createModalName" @click="confirmCreateDefinition">{{ createModalLoading ? 'Criando...' : 'Criar' }}</button>
+          </div>
+        </div>
+      </div>
+
     </div>
 
     <!-- Script Editor Modal -->
@@ -3128,10 +2334,11 @@ onBeforeUnmount(() => {
 
 <style scoped>
 @import '@jsplumb/browser-ui/css/jsplumb.css';
+
+
 .workflow-canvas {
   background-color: #f8fafc;
   background-image: radial-gradient(circle, #cbd5e1 1px, transparent 1px);
-  background-size: 28px 28px;
 }
 
 .workflow-stage {
@@ -3151,34 +2358,18 @@ onBeforeUnmount(() => {
     border-color 0.15s ease;
 }
 
-/* ── jsPlumb: regras mínimas necessárias (injetadas globalmente) ── */
-:global(._jsPlumb_drag_select *) {
-  user-select: none;
-}
-:global(._jsPlumb_connector) {
-  z-index: 18;
-  overflow: visible;
-}
-:global(._jsPlumb_endpoint) {
-  z-index: 19;
-  cursor: crosshair;
-}
-:global(._jsPlumb_overlay) {
-  z-index: 20;
+.workflow-node:active {
+  cursor: grabbing;
 }
 
-:global(.jtk-connector) {
-  overflow: visible;
-  cursor: pointer;
-}
-:global(.jtk-connector) path {
-  pointer-events: stroke;
-  cursor: pointer;
-}
-:global(.jtk-endpoint) {
-  cursor: crosshair;
-}
-
+/* ── jsPlumb global rules ── */
+:global(._jsPlumb_drag_select *) { user-select: none; }
+:global(._jsPlumb_connector) { z-index: 18; overflow: visible; }
+:global(._jsPlumb_endpoint) { z-index: 19; cursor: crosshair; }
+:global(._jsPlumb_overlay) { z-index: 20; }
+:global(.jtk-connector) { overflow: visible; cursor: pointer; }
+:global(.jtk-connector) path { pointer-events: stroke; cursor: pointer; }
+:global(.jtk-endpoint) { cursor: crosshair; }
 :global(.workflow-edge-label) {
   background: #ede9fe;
   border-radius: 4px;
@@ -3189,11 +2380,7 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 
-.workflow-node:active {
-  cursor: grabbing;
-}
-
-/* Handle para iniciar conexões — bolinha no rodapé do nó */
+/* ── Node connection port ── */
 .node-port {
   position: absolute;
   bottom: -7px;
@@ -3206,9 +2393,7 @@ onBeforeUnmount(() => {
   border: 2px solid #fff;
   cursor: crosshair;
   z-index: 5;
-  transition:
-    transform 0.15s ease,
-    background 0.15s ease;
+  transition: transform 0.15s ease, background 0.15s ease;
   box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4);
 }
 
@@ -3218,9 +2403,7 @@ onBeforeUnmount(() => {
   box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.2);
 }
 
-:global(.dark) .node-port {
-  border-color: #1e293b;
-}
+:global(.dark) .node-port { border-color: #1e293b; }
 
 /* ── DECISION diamond ── */
 .decision-node {
@@ -3229,12 +2412,6 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.selection-box {
-  border: 1px solid rgba(99, 102, 241, 0.9);
-  background: rgba(99, 102, 241, 0.14);
-  pointer-events: none;
 }
 
 .decision-diamond {
@@ -3247,9 +2424,7 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   border-radius: 4px;
-  transition:
-    border-color 0.15s,
-    box-shadow 0.15s;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 .decision-diamond--selected {
@@ -3272,7 +2447,6 @@ onBeforeUnmount(() => {
   max-width: 100px;
 }
 
-/* porta false (esquerda-baixo) */
 .node-port--false {
   position: absolute;
   bottom: 20px;
@@ -3287,7 +2461,6 @@ onBeforeUnmount(() => {
   justify-content: center;
 }
 
-/* porta true (direita-baixo) */
 .node-port--true {
   position: absolute;
   bottom: 20px;
@@ -3323,12 +2496,20 @@ onBeforeUnmount(() => {
   line-height: 1;
 }
 
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.25s ease;
+/* ── Marquee selection ── */
+.selection-box {
+  border: 1px solid rgba(99, 102, 241, 0.9);
+  background: rgba(99, 102, 241, 0.14);
+  pointer-events: none;
 }
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
+
+/* ── Transitions ── */
+.fade-enter-active, .fade-leave-active { transition: opacity 0.25s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+
+.slide-left-enter-active, .slide-left-leave-active { transition: transform 0.2s ease, opacity 0.2s ease; }
+.slide-left-enter-from, .slide-left-leave-to { transform: translateX(-12px); opacity: 0; }
+
+.slide-right-enter-active, .slide-right-leave-active { transition: transform 0.2s ease, opacity 0.2s ease; }
+.slide-right-enter-from, .slide-right-leave-to { transform: translateX(12px); opacity: 0; }
 </style>

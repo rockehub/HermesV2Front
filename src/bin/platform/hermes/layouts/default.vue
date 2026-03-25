@@ -14,6 +14,7 @@ const props = defineProps<{
   menuItems: HermesMenuItem[]
   back?: RouteLocationRaw | null
   sectionLabel?: string | null
+  fullCanvas?: boolean
 }>()
 
 const route = useRoute()
@@ -221,10 +222,12 @@ onMounted(() => {
     </template>
   </sidebar-component>
 
-  <main class="main-content w-full pb-8" v-auto-animate>
+  <main :class="fullCanvas ? 'main-content w-full flex flex-col overflow-hidden' : 'main-content w-full pb-8'" v-auto-animate>
     <header-component />
     <div
-      class="grow overflow-y-auto px-[calc(var(--margin-x)-.5rem)] py-5 transition-all duration-[.25s] scrollbar-sm"
+      :class="fullCanvas
+        ? 'relative flex-1 overflow-hidden'
+        : 'grow overflow-y-auto px-[calc(var(--margin-x)-.5rem)] py-5 transition-all duration-[.25s] scrollbar-sm'"
     >
       <slot></slot>
     </div>

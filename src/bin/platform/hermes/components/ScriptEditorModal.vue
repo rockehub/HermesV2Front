@@ -655,11 +655,6 @@ function close() {
         <div class="flex items-center gap-1 rounded-lg bg-white/10 p-1">
           <button
             class="rounded px-3 py-1 text-xs font-medium transition"
-            :class="language === 'groovy' ? 'bg-teal-600 text-white shadow' : 'text-slate-400 hover:text-white'"
-            @click="language = 'groovy'"
-          >Groovy</button>
-          <button
-            class="rounded px-3 py-1 text-xs font-medium transition"
             :class="language === 'python' ? 'bg-teal-600 text-white shadow' : 'text-slate-400 hover:text-white'"
             @click="language = 'python'"
           >Python</button>
