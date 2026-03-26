@@ -87,15 +87,29 @@ function ieAM(ie: string): IEValidationResult {
 function ieBA(ie: string): IEValidationResult {
   const n = d(ie)
   if (n.length !== 8 && n.length !== 9) return err('IE da BA deve ter 8 ou 9 dígitos')
-  const useMod10 = [0,1,2,3,4,5,8].includes(n[0])
-  const calc = (sum: number) => useMod10 ? m10(sum) : m11(sum)
-  if (n.length === 9) {
-    if (calc(sw(n.slice(0,7), [8,7,6,5,4,3,2])) !== n[7]) return err('IE da BA inválida')
-    if (calc(sw(n.slice(0,8), [9,8,7,6,5,4,3,2])) !== n[8]) return err('IE da BA inválida')
-  } else {
-    // 8 dígitos: verificador único em d[7]
-    if (calc(sw(n.slice(0,7), [8,7,6,5,4,3,2])) !== n[7]) return err('IE da BA inválida')
+
+  const refDigit = n.length === 8 ? n[0] : n[1]
+  const useMod10 = [0, 1, 2, 3, 4, 5, 8].includes(refDigit)
+  const calc = (sum: number) => (useMod10 ? m10(sum) : m11(sum))
+
+  if (n.length === 8) {
+    // base = 6 dígitos + 2 DVs
+    const dv2 = calc(sw(n.slice(0, 6), [7, 6, 5, 4, 3, 2])) // último dígito
+    if (dv2 !== n[7]) return err('IE da BA inválida')
+
+    const dv1 = calc(sw([...n.slice(0, 6), dv2], [8, 7, 6, 5, 4, 3, 2])) // penúltimo
+    if (dv1 !== n[6]) return err('IE da BA inválida')
+
+    return ok()
   }
+
+  // 9 dígitos: base = 7 dígitos + 2 DVs
+  const dv2 = calc(sw(n.slice(0, 7), [8, 7, 6, 5, 4, 3, 2])) // último dígito
+  if (dv2 !== n[8]) return err('IE da BA inválida')
+
+  const dv1 = calc(sw([...n.slice(0, 7), dv2], [9, 8, 7, 6, 5, 4, 3, 2])) // penúltimo
+  if (dv1 !== n[7]) return err('IE da BA inválida')
+
   return ok()
 }
 
@@ -163,17 +177,22 @@ function ieMG(ie: string): IEValidationResult {
   const n = d(ie)
   if (n.length !== 13) return err('IE do MG deve ter 13 dígitos')
 
-  // Check 1 (n[11]): insere 0 na posição 3 dos primeiros 11 dígitos
-  const base = [n[0],n[1],n[2],0,n[3],n[4],n[5],n[6],n[7],n[8],n[9]]
+  // 1º DV (posição 12 / n[11])
+  const base = [n[0], n[1], n[2], 0, n[3], n[4], n[5], n[6], n[7], n[8], n[9], n[10]]
   let s1 = 0
-  for (let i = 0; i < 11; i++) {
+
+  for (let i = 0; i < base.length; i++) {
     const p = base[i] * (i % 2 === 0 ? 1 : 2)
     s1 += p >= 10 ? Math.floor(p / 10) + (p % 10) : p
   }
-  if (m10(s1) !== n[11]) return err('IE do MG inválida (1° dígito verificador)')
 
-  // Check 2 (n[12]): mod 11 sobre primeiros 11 dígitos + n[11]
-  if (m11(sw(n.slice(0, 12), [3,2,9,8,7,6,5,4,3,2,1,2])) !== n[12]) return err('IE do MG inválida (2° dígito verificador)')
+  const dv1 = m10(s1)
+  if (dv1 !== n[11]) return err('IE do MG inválida (1° dígito verificador)')
+
+  // 2º DV (posição 13 / n[12])
+  const dv2 = m11(sw(n.slice(0, 12), [3, 2, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2]))
+  if (dv2 !== n[12]) return err('IE do MG inválida (2° dígito verificador)')
+
   return ok()
 }
 
@@ -198,8 +217,11 @@ function ieMT(ie: string): IEValidationResult {
 function iePA(ie: string): IEValidationResult {
   const n = d(ie)
   if (n.length !== 9) return err('IE do PA deve ter 9 dígitos')
-  if (n[0] !== 1 || n[1] !== 5) return err('IE do PA deve iniciar com 15')
-  if (m11(sw(n.slice(0, 8), [9,8,7,6,5,4,3,2])) !== n[8]) return err('IE do PA inválida')
+
+  const prefix = `${n[0]}${n[1]}`
+  if (!['15', '75'].includes(prefix)) return err('IE do PA deve iniciar com 15 ou 75')
+
+  if (m11(sw(n.slice(0, 8), [9, 8, 7, 6, 5, 4, 3, 2])) !== n[8]) return err('IE do PA inválida')
   return ok()
 }
 
@@ -309,7 +331,11 @@ function ieRR(ie: string): IEValidationResult {
   const n = d(ie)
   if (n.length !== 9) return err('IE do RR deve ter 9 dígitos')
   if (n[0] !== 2 || n[1] !== 4) return err('IE do RR deve iniciar com 24')
-  if (m11(sw(n.slice(0, 8), [9,8,7,6,5,4,3,2])) !== n[8]) return err('IE do RR inválida')
+
+  const sum = sw(n.slice(0, 8), [1, 2, 3, 4, 5, 6, 7, 8])
+  const dv = sum % 9
+
+  if (dv !== n[8]) return err('IE do RR inválida')
   return ok()
 }
 
@@ -343,26 +369,29 @@ function ieSE(ie: string): IEValidationResult {
  */
 function ieSP(ie: string): IEValidationResult {
   const raw = ie.trim().toUpperCase()
-  // Rural: P + 12 dígitos
+
+  // Produtor rural: PXXXXXXXXDXXX
   if (raw.startsWith('P')) {
     const n = raw.replace(/\D/g, '').split('').map(Number)
     if (n.length !== 12) return err('IE rural de SP deve ter 12 dígitos após P')
-    // Rural SP: apenas um verificador em n[9], weights [1,3,2,9,8,7,6,5,4,3,2]
-    const r = sw(n.slice(0,11), [1,3,2,9,8,7,6,5,4,3,2]) % 11
-    const c = r >= 2 ? 11 - r : r
-    if (c !== n[9]) return err('IE rural de SP inválida')
+
+    const dv = (sw(n.slice(0, 8), [1, 3, 4, 5, 6, 7, 8, 10]) % 11) % 10
+    if (dv !== n[8]) return err('IE rural de SP inválida')
+
     return ok()
   }
+
   const n = d(ie)
   if (n.length !== 12) return err('IE de SP deve ter 12 dígitos')
-  // Verificador 1 em d[8]: pesos sobre d[0..7]
-  const r1 = sw(n.slice(0, 8), [1,3,2,9,8,7,6,5]) % 11
-  const c1 = r1 >= 2 ? 11 - r1 : r1
-  if (c1 !== n[8]) return err('IE de SP inválida (1° dígito verificador)')
-  // Verificador 2 em d[11]: pesos sobre d[0..10]
-  const r2 = sw(n.slice(0, 11), [3,2,10,9,8,7,6,5,4,3,2]) % 11
-  const c2 = r2 >= 2 ? 11 - r2 : r2
-  if (c2 !== n[11]) return err('IE de SP inválida (2° dígito verificador)')
+
+  // 1º DV = posição 9
+  const dv1 = (sw(n.slice(0, 8), [1, 3, 4, 5, 6, 7, 8, 10]) % 11) % 10
+  if (dv1 !== n[8]) return err('IE de SP inválida (1° dígito verificador)')
+
+  // 2º DV = posição 12
+  const dv2 = (sw(n.slice(0, 11), [3, 2, 10, 9, 8, 7, 6, 5, 4, 3, 2]) % 11) % 10
+  if (dv2 !== n[11]) return err('IE de SP inválida (2° dígito verificador)')
+
   return ok()
 }
 
@@ -370,9 +399,11 @@ function ieSP(ie: string): IEValidationResult {
 function ieTO(ie: string): IEValidationResult {
   const n = d(ie)
   if (n.length !== 11) return err('IE do TO deve ter 11 dígitos')
-  // Usa d[0..1] e d[4..9] (ignora d[2] e d[3]) com weights [9,8,7,6,5,4,3,2]
-  const base = [...n.slice(0, 2), ...n.slice(4, 10)] // 8 dígitos
-  if (m11(sw(base, [9,8,7,6,5,4,3,2])) !== n[10]) return err('IE do TO inválida')
+
+  // Usa posições 1,2,5,6,7,8,9,10 (ignora 3 e 4)
+  const base = [...n.slice(0, 2), ...n.slice(4, 10)]
+  if (m11(sw(base, [9, 8, 7, 6, 5, 4, 3, 2])) !== n[10]) return err('IE do TO inválida')
+
   return ok()
 }
 
