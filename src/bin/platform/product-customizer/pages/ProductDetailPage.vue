@@ -131,6 +131,10 @@ const showCategoryDropdown = ref(false)
 const showBrandDropdown = ref(false)
 const showWarehouseDropdown = ref(false)
 
+function hideCategoryDropdown() { setTimeout(() => { showCategoryDropdown.value = false }, 150) }
+function hideBrandDropdown() { setTimeout(() => { showBrandDropdown.value = false }, 150) }
+function hideWarehouseDropdown() { setTimeout(() => { showWarehouseDropdown.value = false }, 150) }
+
 function addCategory(cat: ProductCategory) {
   productCategories.value.push(cat)
   categorySearch.value = ''
@@ -908,7 +912,7 @@ onMounted(() => loadProduct())
                   placeholder="Buscar e adicionar categorias..."
                   class="w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none transition-all focus:border-primary focus:bg-white dark:border-navy-700 dark:bg-navy-800 dark:text-navy-100 dark:focus:border-primary dark:focus:bg-navy-750"
                   @focus="showCategoryDropdown = true"
-                  @blur="setTimeout(() => showCategoryDropdown = false, 150)"
+                  @blur="hideCategoryDropdown()"
                 />
                 <div
                   v-if="showCategoryDropdown && filteredCategories.length > 0"
@@ -962,7 +966,7 @@ onMounted(() => loadProduct())
                   placeholder="Buscar e adicionar marcas..."
                   class="w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none transition-all focus:border-primary focus:bg-white dark:border-navy-700 dark:bg-navy-800 dark:text-navy-100 dark:focus:border-primary dark:focus:bg-navy-750"
                   @focus="showBrandDropdown = true"
-                  @blur="setTimeout(() => showBrandDropdown = false, 150)"
+                  @blur="hideBrandDropdown()"
                 />
                 <div
                   v-if="showBrandDropdown && filteredBrands.length > 0"
@@ -1466,7 +1470,7 @@ onMounted(() => loadProduct())
                   placeholder="Adicionar depósito..."
                   class="w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none transition-all focus:border-primary focus:bg-white dark:border-navy-700 dark:bg-navy-800 dark:text-navy-100 dark:focus:border-primary dark:focus:bg-navy-750"
                   @focus="showWarehouseDropdown = true"
-                  @blur="setTimeout(() => showWarehouseDropdown = false, 150)"
+                  @blur="hideWarehouseDropdown()"
                 />
                 <div
                   v-if="showWarehouseDropdown && filteredWarehouses.length > 0"
