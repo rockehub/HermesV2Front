@@ -125,7 +125,13 @@ function formatCurrency(cents: number) {
           >
             <em class="fa-solid fa-minus text-[8px]"></em>
           </button>
-          <span class="w-6 text-center text-xs font-medium text-slate-700 dark:text-navy-100">{{ line.quantity }}</span>
+          <input
+            type="number"
+            min="1"
+            class="w-10 text-center text-xs font-medium rounded border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-700 text-slate-700 dark:text-navy-100 focus:outline-none focus:border-primary"
+            :value="line.quantity"
+            @change="posStore.updateItem(line.id, Math.max(1, Number(($event.target as HTMLInputElement).value)))"
+          />
           <button
             class="flex h-6 w-6 items-center justify-center rounded-md bg-slate-100 dark:bg-navy-600 text-slate-500 hover:bg-slate-200 dark:hover:bg-navy-500 transition-colors text-xs"
             @click="posStore.updateItem(line.id, line.quantity + 1)"
@@ -133,7 +139,7 @@ function formatCurrency(cents: number) {
             <em class="fa-solid fa-plus text-[8px]"></em>
           </button>
           <button
-            class="ml-1 flex h-6 w-6 items-center justify-center rounded-md text-slate-300 hover:bg-error/10 hover:text-error transition-colors opacity-0 group-hover:opacity-100 text-xs"
+            class="ml-1 flex h-6 w-6 items-center justify-center rounded-md text-slate-400 hover:bg-error/10 hover:text-error transition-colors text-xs"
             @click="posStore.removeItem(line.id)"
           >
             <em class="fa-solid fa-times text-[9px]"></em>

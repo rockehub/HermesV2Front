@@ -6,10 +6,24 @@ import type * as Monaco from 'monaco-editor'
 
 type WorkflowOwnerType = 'ORDER' | 'INVOICE' | 'DELIVERY' | 'PAYMENT' | 'GENERIC'
 
+type ContextSchemaVar = {
+  key: string
+  type: string
+  description: string
+  source: string
+}
+
+type OutputDeclaration = {
+  key: string
+  type: string
+  description: string
+}
+
 const props = defineProps<{
   modelValue: boolean
   ownerType: WorkflowOwnerType
   configData: string
+  contextSchema?: ContextSchemaVar[]
 }>()
 
 const emit = defineEmits<{
@@ -191,6 +205,27 @@ log.info("Executando para pedido " + order.getId())
 {"status": "SUCCESS", "message": "OK"}`
 }
 
+// ── Output declarations — what this script writes to context ─────────────────
+const outputDeclarations = ref<OutputDeclaration[]>([])
+const newOutputKey = ref('')
+const newOutputType = ref('string')
+const newOutputDesc = ref('')
+
+function addOutputDeclaration() {
+  if (!newOutputKey.value.trim()) return
+  outputDeclarations.value.push({
+    key: newOutputKey.value.trim(),
+    type: newOutputType.value,
+    description: newOutputDesc.value.trim(),
+  })
+  newOutputKey.value = ''
+  newOutputDesc.value = ''
+}
+
+function removeOutputDeclaration(index: number) {
+  outputDeclarations.value.splice(index, 1)
+}
+
 // ── Parse configData on open ──────────────────────────────────────────────────
 function parseConfigData() {
   try {
@@ -198,12 +233,24 @@ function parseConfigData() {
     language.value = cfg.language === 'python' ? 'python' : 'groovy'
     scriptContent.value = cfg.script ?? TEMPLATES[language.value]
     timeoutSeconds.value = cfg.timeoutSeconds ?? 10
+    outputDeclarations.value = Array.isArray(cfg.outputDeclarations) ? cfg.outputDeclarations : []
   } catch {
     language.value = 'groovy'
     scriptContent.value = TEMPLATES.groovy
     timeoutSeconds.value = 10
+    outputDeclarations.value = []
   }
-  mockContextJson.value = JSON.stringify(MOCK_PRESETS[props.ownerType] ?? {}, null, 2)
+  // Seed mock context for GENERIC: use upstream schema keys as hints
+  if (props.ownerType === 'GENERIC' && props.contextSchema?.length) {
+    const seed: Record<string, unknown> = {}
+    for (const v of props.contextSchema) {
+      if (v.key === '...') continue
+      seed[v.key] = v.type === 'number' ? 0 : v.type === 'boolean' ? false : `sample_${v.key}`
+    }
+    mockContextJson.value = JSON.stringify(seed, null, 2)
+  } else {
+    mockContextJson.value = JSON.stringify(MOCK_PRESETS[props.ownerType] ?? {}, null, 2)
+  }
   testResult.value = null
   validationResult.value = null
 }
@@ -386,6 +433,16 @@ function registerAutocomplete(monaco: typeof Monaco) {
 
         // Top-level variable suggestions (no dot)
         const hasOwnerDelivery = ['DELIVERY', 'INVOICE'].includes(props.ownerType)
+        const upstreamSuggestions = (props.contextSchema ?? [])
+          .filter(v => v.key !== '...')
+          .map(v => ({
+            label: v.key,
+            kind: monaco.languages.CompletionItemKind.Variable,
+            detail: v.type,
+            insertText: v.key,
+            range,
+            documentation: `[${v.source}] ${v.description}`,
+          }))
         return {
           suggestions: [
             { label: 'order',        kind: monaco.languages.CompletionItemKind.Variable, detail: 'ScriptOrder',    insertText: 'order',        range, documentation: 'Objeto do pedido' },
@@ -395,6 +452,7 @@ function registerAutocomplete(monaco: typeof Monaco) {
             { label: 'executionId',  kind: monaco.languages.CompletionItemKind.Variable, detail: 'String',           insertText: 'executionId',  range, documentation: 'ID da execução atual' },
             { label: 'requiresShipping', kind: monaco.languages.CompletionItemKind.Variable, detail: 'boolean', insertText: 'requiresShipping', range },
             { label: 'invoiceRequired',  kind: monaco.languages.CompletionItemKind.Variable, detail: 'boolean', insertText: 'invoiceRequired',  range },
+            ...upstreamSuggestions,
           ],
         }
       },
@@ -632,7 +690,15 @@ watch(showDepsPanel, (open) => { if (open && !deps.value.length) loadDeps() })
 
 // ── Save ──────────────────────────────────────────────────────────────────────
 function save() {
-  emit('save', JSON.stringify({ language: language.value, script: scriptContent.value, timeoutSeconds: timeoutSeconds.value }))
+  const payload: Record<string, unknown> = {
+    language: language.value,
+    script: scriptContent.value,
+    timeoutSeconds: timeoutSeconds.value,
+  }
+  if (outputDeclarations.value.length) {
+    payload.outputDeclarations = outputDeclarations.value
+  }
+  emit('save', JSON.stringify(payload))
   emit('update:modelValue', false)
 }
 
@@ -766,12 +832,11 @@ function close() {
             </div>
 
 
-            <!-- Owner bindings -->
+            <!-- Owner bindings (static entity fields for ORDER/DELIVERY) -->
             <div v-if="contextDocs.length">
               <p class="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Do workflow</p>
               <div class="space-y-1.5">
                 <template v-for="doc in contextDocs" :key="doc.variable">
-                  <!-- order/delivery: expandable with fields -->
                   <div v-if="doc.type === 'ScriptOrder' || doc.type === 'ScriptDelivery'" class="rounded bg-black/30 text-[11px]">
                     <div class="flex items-baseline gap-1 px-2 py-1.5">
                       <code class="text-teal-300">{{ doc.variable }}</code>
@@ -790,7 +855,6 @@ function close() {
                       </div>
                     </div>
                   </div>
-                  <!-- flat bindings -->
                   <div v-else class="rounded bg-black/30 px-2 py-1.5 text-[11px]">
                     <div class="flex items-baseline gap-1">
                       <code class="text-teal-300">{{ doc.variable }}</code>
@@ -802,19 +866,95 @@ function close() {
               </div>
             </div>
 
+            <!-- Upstream graph context (inferred from previous nodes) -->
+            <div v-if="contextSchema?.length">
+              <p class="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-amber-500">Nós anteriores</p>
+              <div class="space-y-1">
+                <div
+                  v-for="v in contextSchema"
+                  :key="v.key + v.source"
+                  class="rounded bg-amber-900/20 px-2 py-1.5 text-[11px] border border-amber-900/30"
+                >
+                  <div class="flex items-baseline gap-1.5">
+                    <code class="text-amber-300 shrink-0">{{ v.key }}</code>
+                    <span class="text-[10px] text-slate-500 shrink-0">{{ v.type }}</span>
+                    <span class="text-[9px] text-slate-600 ml-auto shrink-0">{{ v.source }}</span>
+                  </div>
+                  <p v-if="v.description" class="mt-0.5 text-[10px] text-slate-500 leading-tight">{{ v.description }}</p>
+                </div>
+              </div>
+            </div>
+
             <!-- Return format -->
             <div>
               <p class="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Retorno</p>
               <pre v-if="language === 'groovy'" class="rounded bg-black/30 px-2 py-2 text-[10px] text-green-400 leading-[1.6] whitespace-pre-wrap">return [
   status: 'SUCCESS',
   transitionKey: 'chave',
-  message: 'msg'
+  message: 'msg',
+  // opcional — escreve no contexto:
+  context: [chave: valor]
 ]</pre>
               <pre v-else class="rounded bg-black/30 px-2 py-2 text-[10px] text-green-400 leading-[1.6] whitespace-pre-wrap">{
   "status": "SUCCESS",
   "transitionKey": "chave",
-  "message": "msg"
+  "message": "msg",
+  "context": {"chave": valor}
 }</pre>
+            </div>
+
+            <!-- Output declarations — what this script writes -->
+            <div>
+              <p class="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-indigo-400">Este script produz</p>
+              <p class="mb-2 text-[9px] text-slate-600 leading-tight">Declare as chaves que este script escreve em <code class="text-green-400">context</code> para que nós posteriores saibam o que esperar.</p>
+              <div v-if="outputDeclarations.length" class="mb-2 space-y-1">
+                <div
+                  v-for="(d, i) in outputDeclarations"
+                  :key="i"
+                  class="flex items-start gap-1 rounded bg-indigo-900/20 border border-indigo-900/30 px-2 py-1.5 text-[11px]"
+                >
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-baseline gap-1">
+                      <code class="text-indigo-300">{{ d.key }}</code>
+                      <span class="text-[10px] text-slate-500">{{ d.type }}</span>
+                    </div>
+                    <p v-if="d.description" class="text-[10px] text-slate-500 mt-0.5 truncate">{{ d.description }}</p>
+                  </div>
+                  <button class="shrink-0 text-slate-600 hover:text-red-400 transition text-[11px] leading-none mt-0.5" @click="removeOutputDeclaration(i)">✕</button>
+                </div>
+              </div>
+              <!-- Add new declaration -->
+              <div class="space-y-1">
+                <input
+                  v-model="newOutputKey"
+                  class="w-full rounded bg-black/30 px-2 py-1 text-[11px] font-mono text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  placeholder="nome_da_chave"
+                  @keydown.enter.prevent="addOutputDeclaration"
+                />
+                <div class="flex gap-1">
+                  <select
+                    v-model="newOutputType"
+                    class="rounded bg-black/30 px-1.5 py-1 text-[11px] text-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  >
+                    <option value="string">string</option>
+                    <option value="number">number</option>
+                    <option value="boolean">boolean</option>
+                    <option value="object">object</option>
+                    <option value="array">array</option>
+                  </select>
+                  <input
+                    v-model="newOutputDesc"
+                    class="flex-1 min-w-0 rounded bg-black/30 px-2 py-1 text-[11px] text-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    placeholder="descrição"
+                    @keydown.enter.prevent="addOutputDeclaration"
+                  />
+                  <button
+                    class="shrink-0 rounded bg-indigo-700 px-2 py-1 text-[11px] text-white hover:bg-indigo-600 transition disabled:opacity-40"
+                    :disabled="!newOutputKey.trim()"
+                    @click="addOutputDeclaration"
+                  >+</button>
+                </div>
+              </div>
             </div>
           </div>
         </div>

@@ -4,6 +4,7 @@ import { useDebounceFn } from '@vueuse/core'
 import { $axios } from '@/helpers/integration/integration'
 import { usePosApi, type PosCustomerRequest } from '../../composables/usePosApi'
 import { usePosStore, type PosCustomer } from '../../store/usePosStore'
+import { validateIE } from '../../composables/ieValidator'
 
 const api = usePosApi()
 const posStore = usePosStore()
@@ -16,6 +17,7 @@ const saving = ref(false)
 const cnpjLookupLoading = ref(false)
 const cnpjLookupError = ref<string | null>(null)
 const cnpjLookupResult = ref<any | null>(null)
+const cnpjUf = ref<string | null>(null)
 
 const newCustomer = ref<PosCustomerRequest>({
   name: '',
@@ -46,9 +48,20 @@ const indIEDestOptions = [
 ]
 
 const ieRequired = computed(() => newCustomer.value.indIEDest === 1)
+
+const ieValidation = computed(() => {
+  const ie = newCustomer.value.inscricaoEstadual?.trim()
+  if (!ie) return null
+  if (!cnpjUf.value) return null // sem UF do lookup ainda não valida
+  return validateIE(cnpjUf.value, ie)
+})
+
+const ieValid   = computed(() => ieValidation.value?.valid ?? null)
+const ieInvalid = computed(() => ieValidation.value !== null && !ieValidation.value.valid)
 const canSave = computed(() => {
-  if (!newCustomer.value.name || !newCustomer.value.email) return false
+  if (!newCustomer.value.name) return false
   if (ieRequired.value && !newCustomer.value.inscricaoEstadual?.trim()) return false
+  if (ieInvalid.value) return false
   return true
 })
 
@@ -64,6 +77,7 @@ const doCnpjLookup = useDebounceFn(async () => {
     const data = res.data?.data
     if (data) {
       cnpjLookupResult.value = data
+      cnpjUf.value = data.uf ?? null
       newCustomer.value.name = data.razaoSocial ?? newCustomer.value.name
       newCustomer.value.companyName = data.nomeFantasia ?? data.razaoSocial
       newCustomer.value.indIEDest = data.indIEDest ?? 9
@@ -80,6 +94,7 @@ const doCnpjLookup = useDebounceFn(async () => {
 function onDocumentInput() {
   cnpjLookupError.value = null
   cnpjLookupResult.value = null
+  cnpjUf.value = null
   doCnpjLookup()
 }
 
@@ -321,17 +336,33 @@ function formatDocument(doc: string | null | undefined) {
               <span v-if="ieRequired" class="text-error ml-1">*</span>
               <span v-else class="text-slate-400 ml-1">(opcional para não contribuinte)</span>
             </label>
-            <input
-              v-model="newCustomer.inscricaoEstadual"
-              type="text"
-              placeholder="Ex: 123456789"
-              class="form-input w-full rounded-lg border px-3 py-1.5 text-xs"
-              :class="ieRequired && !newCustomer.inscricaoEstadual?.trim()
-                ? 'border-error bg-error/5'
-                : 'border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-700'"
-            />
-            <p v-if="ieRequired && !newCustomer.inscricaoEstadual?.trim()" class="mt-0.5 text-[10px] text-error">
+            <div class="relative">
+              <input
+                v-model="newCustomer.inscricaoEstadual"
+                type="text"
+                placeholder="Ex: 123456789"
+                class="form-input w-full rounded-lg border px-3 py-1.5 pr-8 text-xs"
+                :class="ieInvalid
+                  ? 'border-error bg-error/5'
+                  : (ieRequired && !newCustomer.inscricaoEstadual?.trim()
+                    ? 'border-error bg-error/5'
+                    : 'border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-700')"
+              />
+              <em v-if="ieValid === true"
+                class="fa-light fa-circle-check absolute right-2.5 top-1/2 -translate-y-1/2 text-success text-xs pointer-events-none"
+              ></em>
+              <em v-else-if="ieInvalid"
+                class="fa-light fa-circle-xmark absolute right-2.5 top-1/2 -translate-y-1/2 text-error text-xs pointer-events-none"
+              ></em>
+            </div>
+            <p v-if="ieInvalid" class="mt-0.5 text-[10px] text-error">
+              {{ ieValidation?.message }}
+            </p>
+            <p v-else-if="ieRequired && !newCustomer.inscricaoEstadual?.trim()" class="mt-0.5 text-[10px] text-error">
               IE obrigatória para contribuinte ICMS
+            </p>
+            <p v-else-if="!cnpjUf && newCustomer.inscricaoEstadual?.trim()" class="mt-0.5 text-[10px] text-slate-400">
+              Informe o CNPJ primeiro para validar a IE do estado
             </p>
           </div>
         </template>

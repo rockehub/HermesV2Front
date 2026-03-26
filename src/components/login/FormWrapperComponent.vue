@@ -2,7 +2,8 @@
   <main class="flex w-full flex-col items-center bg-white dark:bg-navy-700 lg:max-w-md">
     <div class="flex w-full max-w-sm grow flex-col justify-center p-5">
       <div class="text-center">
-        <img class="mx-auto  w-48 lg:hidden" src="@/assets/images/brand/logo.png" alt="logo" />
+        <img v-show="!darkMode.isDarkMode" class="mx-auto w-48 lg:hidden" src="@/assets/images/brand/logo-dark.png" alt="logo" />
+        <img v-show="darkMode.isDarkMode" class="mx-auto w-48 lg:hidden" src="@/assets/images/brand/logo-light.png" alt="logo" />
         <div class="mt-4">
           <h2 class="text-2xl font-semibold text-slate-600 dark:text-navy-100">
             {{ $t('login.welcome') }}

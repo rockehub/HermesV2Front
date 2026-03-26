@@ -40,13 +40,39 @@ type WorkflowExecutionStepDto = {
 
 type WorkflowOwnerType = 'ORDER' | 'INVOICE' | 'DELIVERY' | 'GENERIC' | 'PAYMENT'
 
+type WorkflowNodeInputOption = {
+  value: string
+  label: string
+}
+
+type WorkflowNodeInputField = {
+  code: string
+  label: string
+  type: 'text' | 'number' | 'textarea' | 'options' | 'toggle' | 'integration_config'
+  placeholder?: string
+  required?: boolean
+  hint?: string
+  options?: WorkflowNodeInputOption[]
+  provider?: string  // only for type = 'integration_config'
+}
+
+type WorkflowNodeOutputField = {
+  key: string
+  type: string
+  description: string
+}
+
 type HandlerEntry = {
   code: string
   label: string
   nodeType: WorkflowNodeType
   ownerTypes: WorkflowOwnerType[]
-  configSchema: 'none' | 'delay' | 'subworkflow' | 'script'
+  configSchema: 'none' | 'delay' | 'subworkflow' | 'script' | 'inputs'
   transitionKeys?: string[]
+  library?: string
+  icon?: string
+  inputSchema?: WorkflowNodeInputField[]
+  outputSchema?: WorkflowNodeOutputField[]
 }
 
 const handlerRegistry = ref<HandlerEntry[]>([])
@@ -188,8 +214,104 @@ const OWNER_TYPES: WorkflowOwnerType[] = ['ORDER', 'INVOICE', 'DELIVERY', 'PAYME
 
 const showScriptEditor = ref(false)
 const scriptEditorNode = ref<WorkflowGraphNode | null>(null)
+const scriptEditorContextSchema = ref<(WorkflowNodeOutputField & { source: string })[]>([])
+
+// Static context fields provided by each trigger type
+const TRIGGER_CONTEXT_SCHEMAS: Record<string, (WorkflowNodeOutputField & { source: string })[]> = {
+  ON_ORDER_STATE_CHANGE: [
+    { key: 'orderId',     type: 'string',  description: 'UUID do pedido que disparou o trigger',         source: 'Trigger' },
+    { key: 'newState',    type: 'string',  description: 'Novo estado do pedido (ex: CONFIRMED, SHIPPED)', source: 'Trigger' },
+    { key: 'triggerType', type: 'string',  description: 'Tipo de trigger: ON_ORDER_STATE_CHANGE',         source: 'Trigger' },
+  ],
+  ON_DELIVERY_STATE_CHANGE: [
+    { key: 'deliveryId',  type: 'string',  description: 'UUID da entrega que disparou o trigger',         source: 'Trigger' },
+    { key: 'newState',    type: 'string',  description: 'Novo estado da entrega',                          source: 'Trigger' },
+    { key: 'triggerType', type: 'string',  description: 'Tipo de trigger: ON_DELIVERY_STATE_CHANGE',       source: 'Trigger' },
+  ],
+  WEBHOOK: [
+    { key: 'triggerType',   type: 'string', description: 'Tipo de trigger: WEBHOOK',                source: 'Trigger' },
+    { key: 'webhookToken',  type: 'string', description: 'Token único deste webhook',               source: 'Trigger' },
+    { key: '...',           type: 'any',    description: 'Todas as chaves do corpo da requisição POST ficam disponíveis no contexto', source: 'Trigger' },
+  ],
+  CRON: [
+    { key: 'triggerType', type: 'string', description: 'Tipo de trigger: CRON',           source: 'Trigger' },
+    { key: 'triggerId',   type: 'string', description: 'UUID da definição deste trigger', source: 'Trigger' },
+  ],
+}
+
+function computeUpstreamContextSchema(targetNodeCode: string): (WorkflowNodeOutputField & { source: string })[] {
+  const result: (WorkflowNodeOutputField & { source: string })[] = []
+  const visited = new Set<string>()
+  const queue: string[] = [targetNodeCode]
+
+  while (queue.length) {
+    const code = queue.shift()!
+    if (visited.has(code)) continue
+    visited.add(code)
+
+    if (code !== targetNodeCode) {
+      const node = nodes.value.find(n => n.code === code)
+      if (node) {
+        // 1. Static outputSchema from handler catalog
+        const handler = findHandlerEntry(node.handler)
+        if (handler?.outputSchema?.length) {
+          for (const f of handler.outputSchema) {
+            result.push({ ...f, source: handler.label })
+          }
+        }
+        // 2. Dynamic output declarations from script node configData
+        if (node.type === 'SCRIPT' || handler?.configSchema === 'script') {
+          try {
+            const cfg = JSON.parse(node.configData || '{}')
+            const decls: WorkflowNodeOutputField[] = cfg.outputDeclarations ?? []
+            for (const d of decls) {
+              result.push({ ...d, source: node.name || 'Script' })
+            }
+          } catch { /* ignore */ }
+        }
+        // 3. For START node of GENERIC workflow: add trigger schema
+        if (node.type === 'START' && selectedDefinition.value?.ownerType === 'GENERIC') {
+          const trigger = triggers.value[0]
+          const triggerType = trigger?.triggerType
+          if (triggerType && TRIGGER_CONTEXT_SCHEMAS[triggerType]) {
+            result.push(...TRIGGER_CONTEXT_SCHEMAS[triggerType])
+          }
+          // For WEBHOOK: add keys from the stored sample payload
+          if (triggerType === 'WEBHOOK' && trigger?.configData) {
+            try {
+              const cfg = JSON.parse(trigger.configData)
+              const sample = cfg.samplePayload ?? {}
+              for (const [key, value] of Object.entries(sample)) {
+                if (!result.find(r => r.key === key)) {
+                  result.push({ key, type: typeof value, description: 'Do payload do webhook', source: 'Webhook' })
+                }
+              }
+            } catch { /* ignore malformed configData */ }
+          }
+        }
+      }
+    }
+
+    // Walk backwards through edges
+    for (const edge of edges.value) {
+      if (edge.targetNodeCode === code) {
+        queue.push(edge.sourceNodeCode)
+      }
+    }
+  }
+
+  // Deduplicate by key
+  const seen = new Set<string>()
+  return result.filter(f => {
+    if (seen.has(f.key)) return false
+    seen.add(f.key)
+    return true
+  })
+}
 
 function openScriptEditor(node: WorkflowGraphNode) {
+  // snapshot at open time so the editor doesn't change while the user is typing
+  scriptEditorContextSchema.value = [...computeUpstreamContextSchema(node.code)]
   scriptEditorNode.value = node
   showScriptEditor.value = true
 }
@@ -201,7 +323,7 @@ function onScriptSave(configData: string) {
   showScriptEditor.value = false
 }
 
-const activeTab = ref<'designer' | 'execucoes'>('designer')
+const activeTab = ref<'designer' | 'execucoes' | 'integracoes'>('designer')
 const executions = ref<WorkflowExecutionDto[]>([])
 const executionTotal = ref(0)
 const executionPage = ref(0)
@@ -210,6 +332,127 @@ const expandedExecutionId = ref<string | null>(null)
 const executionSteps = ref<Record<string, WorkflowExecutionStepDto[]>>({})
 const executionStepsLoading = ref<Record<string, boolean>>({})
 const executionActionLoading = ref<Record<string, boolean>>({})
+
+// Integration config state
+type IntegrationView = {
+  id: string; provider: string; name: string; status: string
+  hasToken: boolean; extraConfig: string | null
+}
+type IntegrationProviderField = {
+  code: string; label: string; type: string
+  placeholder?: string; required?: boolean; hint?: string
+  isToken?: boolean; options?: { value: string; label: string }[]
+}
+type IntegrationProviderDefinition = {
+  provider: string; label: string; hint?: string
+  fields: IntegrationProviderField[]
+}
+
+const integrations = ref<IntegrationView[]>([])
+const integrationProviders = ref<IntegrationProviderDefinition[]>([])
+const integrationsLoading = ref(false)
+
+// Add/edit modal state
+const integrationModal = ref<{
+  open: boolean
+  mode: 'add-pick' | 'form'  // step 1: pick provider; step 2: fill form
+  editingId: string | null
+  provider: string
+  form: Record<string, string>
+  saving: boolean
+}>({
+  open: false, mode: 'add-pick', editingId: null,
+  provider: '', form: {}, saving: false,
+})
+
+// keyed by provider — used by node inspector dropdowns
+const integrationsByProvider = computed<Record<string, IntegrationView[]>>(() => {
+  const map: Record<string, IntegrationView[]> = {}
+  for (const cfg of integrations.value) {
+    if (!map[cfg.provider]) map[cfg.provider] = []
+    map[cfg.provider].push(cfg)
+  }
+  return map
+})
+
+async function loadIntegrations() {
+  integrationsLoading.value = true
+  try {
+    const [{ data: providerDefs }, { data: configured }] = await Promise.all([
+      $axios.get<IntegrationProviderDefinition[]>('/api/v1/admin/integrations/providers'),
+      $axios.get<IntegrationView[]>('/api/v1/admin/integrations'),
+    ])
+    integrationProviders.value = providerDefs
+    integrations.value = configured
+  } finally {
+    integrationsLoading.value = false
+  }
+}
+
+function openAddIntegration() {
+  integrationModal.value = { open: true, mode: 'add-pick', editingId: null, provider: '', form: {}, saving: false }
+}
+
+function pickProvider(provider: string) {
+  const providerDef = integrationProviders.value.find(p => p.provider === provider)!
+  const form: Record<string, string> = {}
+  for (const f of providerDef.fields) form[f.code] = ''
+  integrationModal.value.provider = provider
+  integrationModal.value.form = form
+  integrationModal.value.mode = 'form'
+}
+
+function openEditIntegration(cfg: IntegrationView) {
+  const providerDef = integrationProviders.value.find(p => p.provider === cfg.provider)
+  const form: Record<string, string> = { name: cfg.name }
+  if (providerDef) {
+    let saved: Record<string, string> = {}
+    if (cfg.extraConfig) { try { saved = JSON.parse(cfg.extraConfig) } catch { /* */ } }
+    for (const f of providerDef.fields) {
+      form[f.code] = f.isToken ? '' : (saved[f.code] ?? '')
+    }
+  }
+  integrationModal.value = { open: true, mode: 'form', editingId: cfg.id, provider: cfg.provider, form, saving: false }
+}
+
+async function saveIntegrationModal() {
+  const modal = integrationModal.value
+  const providerDef = integrationProviders.value.find(p => p.provider === modal.provider)
+  if (!providerDef) return
+  modal.saving = true
+  try {
+    const form = modal.form
+    let tokenValue: string | undefined
+    const extraConfigObj: Record<string, string> = {}
+    for (const f of providerDef.fields) {
+      if (f.isToken) { if (form[f.code]) tokenValue = form[f.code] }
+      else extraConfigObj[f.code] = form[f.code] ?? ''
+    }
+    const payload = {
+      provider: modal.provider,
+      name: form['name'] || providerDef.label,
+      token: tokenValue,
+      extraConfig: Object.keys(extraConfigObj).length ? JSON.stringify(extraConfigObj) : null,
+    }
+    if (modal.editingId) {
+      const { data } = await $axios.put<IntegrationView>(`/api/v1/admin/integrations/${modal.editingId}`, payload)
+      const idx = integrations.value.findIndex(i => i.id === modal.editingId)
+      if (idx >= 0) integrations.value[idx] = data
+    } else {
+      const { data } = await $axios.post<IntegrationView>('/api/v1/admin/integrations', payload)
+      integrations.value.push(data)
+    }
+    modal.open = false
+  } finally {
+    modal.saving = false
+  }
+}
+
+async function deleteIntegration(id: string) {
+  if (!confirm('Remover esta configuração de integração?')) return
+  await $axios.delete(`/api/v1/admin/integrations/${id}`)
+  integrations.value = integrations.value.filter(i => i.id !== id)
+}
 
 const nodeTypes: WorkflowNodeType[] = ['START', 'ACTION', 'DECISION', 'WAIT', 'END', 'FAILURE', 'SCRIPT']
 
@@ -287,7 +530,22 @@ const definitionsByOwnerType = computed(() => {
 
 const filteredHandlers = computed(() => {
   const ownerType = selectedDefinition.value?.ownerType ?? 'ORDER'
-  return handlerRegistry.value.filter((h) => h.ownerTypes.includes(ownerType))
+  return handlerRegistry.value.filter((h) => {
+    if (!h.ownerTypes.includes(ownerType)) return false
+    // webhook.return only makes sense in SYNC webhook workflows
+    if (h.code === 'webhook.return') return hasSyncWebhookTrigger.value
+    return true
+  })
+})
+
+const handlersByLibrary = computed(() => {
+  const map = new Map<string, HandlerEntry[]>()
+  for (const h of filteredHandlers.value) {
+    const lib = h.library ?? 'Built-in'
+    if (!map.has(lib)) map.set(lib, [])
+    map.get(lib)!.push(h)
+  }
+  return map
 })
 
 const selectedNode = computed(
@@ -298,9 +556,25 @@ const selectedEdge = computed(
   () => edges.value.find((edge) => edgeKey(edge) === selectedEdgeKey.value) ?? null
 )
 
-const selectedNodeConfigSchema = computed((): 'none' | 'delay' | 'subworkflow' | 'script' => {
+const selectedNodeConfigSchema = computed((): 'none' | 'delay' | 'subworkflow' | 'script' | 'inputs' => {
   if (!selectedNode.value?.handler) return 'none'
   return findHandlerEntry(selectedNode.value!.handler)?.configSchema ?? 'none'
+})
+
+const currentHandler = computed(() => findHandlerEntry(selectedNode.value?.handler))
+
+// Upstream context vars for the currently selected node — computed once, used in template and passed to editor
+const selectedNodeUpstreamSchema = computed(() =>
+  selectedNode.value ? computeUpstreamContextSchema(selectedNode.value.code) : []
+)
+
+const configJson = computed({
+  get: (): Record<string, any> => {
+    try { return JSON.parse(selectedNode.value?.configData || '{}') } catch { return {} }
+  },
+  set: (val: Record<string, any>) => {
+    if (selectedNode.value) selectedNode.value.configData = JSON.stringify(val)
+  }
 })
 
 type ConditionForm = {
@@ -1497,11 +1771,185 @@ watch(
   { deep: true }
 )
 
+// ── Trigger panel state ────────────────────────────────────────────────
+type WorkflowTrigger = {
+  id: string
+  triggerType: string
+  status: string
+  configData?: string
+  webhookToken?: string
+  lastFiredAt?: string
+  workflowDefinitionId: string
+}
+
+const triggers = ref<WorkflowTrigger[]>([])
+const triggersLoading = ref(false)
+const showAddTrigger = ref(false)
+const newTriggerType = ref<'ON_ORDER_STATE_CHANGE' | 'ON_DELIVERY_STATE_CHANGE' | 'WEBHOOK' | 'CRON'>('ON_ORDER_STATE_CHANGE')
+const newTriggerConfig = ref('')
+const newTriggerSamplePayload = ref('{\n  "data": "exemplo"\n}')
+const newTriggerWebhookMode = ref<'ASYNC' | 'SYNC'>('ASYNC')
+const triggerSaving = ref(false)
+
+// Inline payload editor state (keyed by trigger id)
+const editingPayloadId = ref<string | null>(null)
+const editingPayloadJson = ref('')
+const payloadSaving = ref(false)
+
+const TRIGGER_TYPE_LABELS: Record<string, string> = {
+  ON_ORDER_STATE_CHANGE:    'Mudança de estado do pedido',
+  ON_DELIVERY_STATE_CHANGE: 'Mudança de estado da entrega',
+  WEBHOOK:                  'Webhook (POST externo)',
+  CRON:                     'Agendado (CRON)',
+}
+
+async function loadTriggers() {
+  if (!selectedDefinitionId.value) return
+  triggersLoading.value = true
+  try {
+    const { data } = await $axios.get<WorkflowTrigger[]>('/api/v1/admin/workflow-triggers', {
+      params: { workflowDefinitionId: selectedDefinitionId.value }
+    })
+    triggers.value = data
+  } finally {
+    triggersLoading.value = false
+  }
+}
+
+async function createTrigger() {
+  if (!selectedDefinitionId.value) return
+  triggerSaving.value = true
+  try {
+    let configData: string | null = null
+    if (newTriggerType.value === 'CRON') {
+      configData = newTriggerConfig.value || null
+    } else if (newTriggerType.value === 'WEBHOOK') {
+      try {
+        const sample = JSON.parse(newTriggerSamplePayload.value || '{}')
+        configData = JSON.stringify({ samplePayload: sample, mode: newTriggerWebhookMode.value })
+      } catch {
+        configData = JSON.stringify({ samplePayload: {}, mode: newTriggerWebhookMode.value })
+      }
+    }
+    await $axios.post('/api/v1/admin/workflow-triggers', {
+      triggerType: newTriggerType.value,
+      configData,
+      workflowDefinitionId: selectedDefinitionId.value,
+    })
+    newTriggerConfig.value = ''
+    newTriggerSamplePayload.value = '{\n  "data": "exemplo"\n}'
+    newTriggerWebhookMode.value = 'ASYNC'
+    showAddTrigger.value = false
+    await loadTriggers()
+  } finally {
+    triggerSaving.value = false
+  }
+}
+
+function openPayloadEditor(t: WorkflowTrigger) {
+  let current = '{}'
+  try {
+    const cfg = JSON.parse(t.configData || '{}')
+    current = JSON.stringify(cfg.samplePayload ?? {}, null, 2)
+  } catch { /* */ }
+  editingPayloadJson.value = current
+  editingPayloadId.value = t.id
+}
+
+async function savePayload(t: WorkflowTrigger) {
+  payloadSaving.value = true
+  try {
+    let sample: Record<string, unknown> = {}
+    try { sample = JSON.parse(editingPayloadJson.value || '{}') } catch { /* keep empty */ }
+    // merge with existing configData so we don't lose other keys
+    let existing: Record<string, unknown> = {}
+    try { existing = JSON.parse(t.configData || '{}') } catch { /* */ }
+    const newConfig = JSON.stringify({ ...existing, samplePayload: sample })
+    await $axios.put(`/api/v1/admin/workflow-triggers/${t.id}/config`, { configData: newConfig })
+    t.configData = newConfig
+    editingPayloadId.value = null
+    // refresh upstream schema for any open script node
+    if (scriptEditorNode.value) {
+      scriptEditorContextSchema.value = [...computeUpstreamContextSchema(scriptEditorNode.value.code)]
+    }
+  } finally {
+    payloadSaving.value = false
+  }
+}
+
+async function deleteTrigger(id: string) {
+  await $axios.delete(`/api/v1/admin/workflow-triggers/${id}`)
+  triggers.value = triggers.value.filter(t => t.id !== id)
+}
+
+async function toggleTriggerStatus(trigger: WorkflowTrigger) {
+  const next = trigger.status === 'ACTIVE' ? 'DISABLED' : 'ACTIVE'
+  await $axios.put(`/api/v1/admin/workflow-triggers/${trigger.id}/status`, { status: next })
+  trigger.status = next
+}
+
+const showTriggerPanel = computed(
+  () => selectedNode.value?.type === 'START' && selectedDefinition.value?.ownerType === 'GENERIC'
+)
+
+// Load triggers when a GENERIC workflow is opened.
+// Two watches are needed:
+//  1. Reset state when the selected definition changes.
+//  2. Actually load triggers when ownerType becomes available (async load
+//     means ownerType may not be set yet when selectedDefinitionId fires).
+watch(
+  () => selectedDefinitionId.value,
+  () => {
+    triggers.value = []
+    showAddTrigger.value = false
+  }
+)
+watch(
+  () => selectedDefinition.value?.ownerType,
+  (ownerType) => {
+    if (ownerType === 'GENERIC' && selectedDefinitionId.value) loadTriggers()
+    else triggers.value = []
+  },
+  { immediate: true }
+)
+
+/** Returns the webhook execution mode stored in a trigger's configData. */
+function triggerWebhookMode(t: WorkflowTrigger): 'SYNC' | 'ASYNC' {
+  if (t.triggerType !== 'WEBHOOK') return 'ASYNC'
+  try {
+    const cfg = JSON.parse(t.configData ?? '{}')
+    return cfg.mode === 'SYNC' ? 'SYNC' : 'ASYNC'
+  } catch { return 'ASYNC' }
+}
+
+/** True when the current workflow has at least one active SYNC webhook trigger. */
+const hasSyncWebhookTrigger = computed(() =>
+  triggers.value.some(t => t.triggerType === 'WEBHOOK' && triggerWebhookMode(t) === 'SYNC')
+)
+
+watch(
+  () => selectedNode.value?.id,
+  () => { showAddTrigger.value = false }
+)
+
+const copiedTriggerToken = ref<string | null>(null)
+
+function copyWebhookUrl(token: string) {
+  const path = `/api/v1/public/workflows/webhook/${token}`
+  navigator.clipboard.writeText(path).catch(() => {})
+  copiedTriggerToken.value = token
+  setTimeout(() => { if (copiedTriggerToken.value === token) copiedTriggerToken.value = null }, 2000)
+}
+
 watch(activeTab, (tab) => {
   if (tab === 'execucoes' && selectedDefinitionId.value) {
     executions.value = []
     expandedExecutionId.value = null
     loadExecutions()
+    return
+  }
+  if (tab === 'integracoes') {
+    loadIntegrations()
     return
   }
   if (tab === 'designer') repaintCanvas()
@@ -1545,7 +1993,7 @@ onMounted(async () => {
   window.addEventListener('mousemove', onMouseMove)
   window.addEventListener('mouseup', endDrag)
   window.addEventListener('keydown', onKeydown)
-  await Promise.all([loadDefinitions(), loadHandlerRegistry()])
+  await Promise.all([loadDefinitions(), loadHandlerRegistry(), loadIntegrations()])
   if (!selectedDefinitionId.value && definitions.value[0]) {
     await router.replace({ name: 'workflow-designer', params: { id: definitions.value[0].id } })
   }
@@ -1819,6 +2267,12 @@ onBeforeUnmount(() => {
             :disabled="!selectedDefinitionId"
             @click="activeTab = 'execucoes'"
           >Execuções</button>
+          <button
+            class="rounded-md px-3 py-1 text-xs font-medium transition"
+            :class="activeTab === 'integracoes' ? 'bg-white text-indigo-600 shadow-sm dark:bg-navy-600 dark:text-indigo-400' : 'text-slate-500 hover:text-slate-700 dark:text-navy-300'"
+            type="button"
+            @click="activeTab = 'integracoes'"
+          >Integrações</button>
         </div>
 
         <!-- Zoom controls -->
@@ -1972,22 +2426,34 @@ onBeforeUnmount(() => {
                   {{ type }}
                 </button>
               </div>
-              <div class="mb-1 px-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-navy-400">Handlers</div>
-              <button
-                v-for="entry in filteredHandlers"
-                :key="entry.code"
-                class="flex w-full cursor-grab items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition hover:scale-[1.01] active:cursor-grabbing"
-                :class="entry.code === 'workflow.call-workflow'
-                  ? 'border-purple-300 bg-purple-50 text-purple-700 dark:border-purple-600 dark:bg-purple-900/20 dark:text-purple-300'
-                  : NODE_TYPE_STYLES[entry.nodeType].border + ' ' + NODE_TYPE_STYLES[entry.nodeType].bg + ' ' + NODE_TYPE_STYLES[entry.nodeType].badge"
-                type="button"
-                draggable="true"
-                @dragstart="$event.dataTransfer?.setData('application/x-workflow-item', JSON.stringify({ kind: 'handler', code: entry.code }))"
-                @click="addNodeFromHandler(entry)"
+              <details
+                v-for="[lib, entries] in handlersByLibrary"
+                :key="lib"
+                open
+                class="mb-1"
               >
-                <span class="h-2 w-2 shrink-0 rounded-full" :class="entry.code === 'workflow.call-workflow' ? 'bg-purple-400' : NODE_TYPE_STYLES[entry.nodeType].dot"></span>
-                <span class="truncate">{{ entry.label }}</span>
-              </button>
+                <summary class="mb-1 flex cursor-pointer select-none items-center gap-1 px-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-navy-400 hover:text-slate-600 dark:hover:text-navy-200 list-none">
+                  <em class="fa-solid fa-chevron-right text-[8px] transition-transform [details[open]_&]:rotate-90"></em>
+                  {{ lib }}
+                </summary>
+                <div class="flex flex-col gap-1">
+                  <button
+                    v-for="entry in entries"
+                    :key="entry.code"
+                    class="flex w-full cursor-grab items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition hover:scale-[1.01] active:cursor-grabbing"
+                    :class="entry.code === 'workflow.call-workflow'
+                      ? 'border-purple-300 bg-purple-50 text-purple-700 dark:border-purple-600 dark:bg-purple-900/20 dark:text-purple-300'
+                      : NODE_TYPE_STYLES[entry.nodeType].border + ' ' + NODE_TYPE_STYLES[entry.nodeType].bg + ' ' + NODE_TYPE_STYLES[entry.nodeType].badge"
+                    type="button"
+                    draggable="true"
+                    @dragstart="$event.dataTransfer?.setData('application/x-workflow-item', JSON.stringify({ kind: 'handler', code: entry.code }))"
+                    @click="addNodeFromHandler(entry)"
+                  >
+                    <span class="h-2 w-2 shrink-0 rounded-full" :class="entry.code === 'workflow.call-workflow' ? 'bg-purple-400' : NODE_TYPE_STYLES[entry.nodeType].dot"></span>
+                    <span class="truncate">{{ entry.label }}</span>
+                  </button>
+                </div>
+              </details>
             </div>
           </div>
         </div>
@@ -2059,12 +2525,92 @@ onBeforeUnmount(() => {
                   </p>
                   <p class="mt-1 truncate font-mono text-[10px] text-teal-600 dark:text-teal-400">{{ (() => { try { const s = JSON.parse(selectedNode.configData || '{}').script ?? ''; return s.split('\n')[0] ?? '' } catch { return '' } })() }}</p>
                 </div>
+                <!-- Upstream context vars preview -->
+                <div v-if="selectedNodeUpstreamSchema.length" class="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-800/40 dark:bg-amber-900/10">
+                  <p class="mb-1 text-[10px] font-semibold text-amber-700 dark:text-amber-400">Contexto disponível ({{ selectedNodeUpstreamSchema.length }} var.)</p>
+                  <div class="flex flex-wrap gap-1">
+                    <span
+                      v-for="v in selectedNodeUpstreamSchema.slice(0, 6)"
+                      :key="v.key"
+                      class="rounded bg-amber-100 px-1.5 py-0.5 font-mono text-[10px] text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"
+                    >{{ v.key }}</span>
+                    <span v-if="selectedNodeUpstreamSchema.length > 6" class="text-[10px] text-amber-600 dark:text-amber-500">+{{ selectedNodeUpstreamSchema.length - 6 }} mais</span>
+                  </div>
+                </div>
+                <!-- Declared outputs from this script node -->
+                <div v-if="(() => { try { return (JSON.parse(selectedNode.configData || '{}').outputDeclarations ?? []).length > 0 } catch { return false } })()" class="mt-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 dark:border-indigo-800/40 dark:bg-indigo-900/10">
+                  <p class="mb-1 text-[10px] font-semibold text-indigo-700 dark:text-indigo-400">Produz no contexto</p>
+                  <div class="flex flex-wrap gap-1">
+                    <span
+                      v-for="d in (() => { try { return JSON.parse(selectedNode.configData || '{}').outputDeclarations ?? [] } catch { return [] } })()"
+                      :key="d.key"
+                      class="rounded bg-indigo-100 px-1.5 py-0.5 font-mono text-[10px] text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300"
+                    >{{ d.key }}</span>
+                  </div>
+                </div>
                 <button class="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-teal-300 bg-teal-50 px-3 py-2 text-xs font-medium text-teal-700 transition hover:bg-teal-100 dark:border-teal-700 dark:bg-teal-900/20 dark:text-teal-300 dark:hover:bg-teal-800/30" @click="openScriptEditor(selectedNode)">
                   <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
                   </svg>
                   Editar script
                 </button>
+              </div>
+              <!-- Generic YAML-driven inputs for extension nodes -->
+              <div v-else-if="selectedNodeConfigSchema === 'inputs' && currentHandler?.inputSchema?.length">
+                <div v-for="field in currentHandler.inputSchema" :key="field.code" class="mb-3">
+                  <label class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                    {{ field.label }}<span v-if="field.required" class="ml-0.5 text-red-400">*</span>
+                  </label>
+                  <textarea
+                    v-if="field.type === 'textarea'"
+                    class="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-700 shadow-sm dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100"
+                    :placeholder="field.placeholder ?? ''"
+                    :value="configJson[field.code] ?? ''"
+                    rows="3"
+                    @input="configJson = { ...configJson, [field.code]: ($event.target as HTMLTextAreaElement).value }"
+                  />
+                  <select
+                    v-else-if="field.type === 'integration_config'"
+                    class="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-700 shadow-sm dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100"
+                    :value="configJson[field.code] ?? ''"
+                    @change="configJson = { ...configJson, [field.code]: ($event.target as HTMLSelectElement).value }"
+                  >
+                    <option value="">Selecione uma conta...</option>
+                    <option
+                      v-for="cfg in (integrationsByProvider[field.provider ?? ''] ?? [])"
+                      :key="cfg.id"
+                      :value="cfg.id"
+                    >{{ cfg.name }}</option>
+                    <option v-if="!(integrationsByProvider[field.provider ?? ''] ?? []).length" disabled value="">Nenhuma conta configurada</option>
+                  </select>
+                  <select
+                    v-else-if="field.type === 'options'"
+                    class="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-700 shadow-sm dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100"
+                    :value="configJson[field.code] ?? ''"
+                    @change="configJson = { ...configJson, [field.code]: ($event.target as HTMLSelectElement).value }"
+                  >
+                    <option value="">Selecione...</option>
+                    <option v-for="opt in field.options" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+                  </select>
+                  <label v-else-if="field.type === 'toggle'" class="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      class="h-4 w-4 rounded border-slate-300 text-indigo-600"
+                      :checked="!!configJson[field.code]"
+                      @change="configJson = { ...configJson, [field.code]: ($event.target as HTMLInputElement).checked }"
+                    />
+                    <span class="text-xs text-slate-600 dark:text-navy-200">{{ field.placeholder ?? field.label }}</span>
+                  </label>
+                  <input
+                    v-else
+                    class="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-700 shadow-sm dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100"
+                    :type="field.type === 'number' ? 'number' : 'text'"
+                    :placeholder="field.placeholder ?? ''"
+                    :value="configJson[field.code] ?? ''"
+                    @input="configJson = { ...configJson, [field.code]: ($event.target as HTMLInputElement).value }"
+                  />
+                  <p v-if="field.hint" class="mt-0.5 text-[10px] text-slate-400 dark:text-navy-400">{{ field.hint }}</p>
+                </div>
               </div>
               <div v-else-if="selectedNodeConfigSchema === 'none' && selectedNode.handler">
                 <span class="text-[11px] italic text-slate-400">Sem configuração adicional.</span>
@@ -2090,9 +2636,159 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
+          <!-- Trigger panel — only for START node on GENERIC workflows -->
+          <div
+            v-if="showTriggerPanel"
+            class="mt-3 rounded-xl border border-indigo-200/80 bg-white/95 shadow-lg backdrop-blur-sm dark:border-indigo-700/60 dark:bg-navy-800/95"
+          >
+            <div class="flex items-center justify-between border-b border-indigo-100 px-4 py-3 dark:border-indigo-800/50">
+              <h2 class="text-xs font-semibold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">Gatilhos</h2>
+              <button
+                class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-indigo-600 transition hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-900/30"
+                type="button"
+                @click="showAddTrigger = !showAddTrigger"
+              >+ Adicionar</button>
+            </div>
+
+            <div class="space-y-2 p-3">
+              <!-- Add trigger form -->
+              <div v-if="showAddTrigger" class="rounded-lg border border-indigo-100 bg-indigo-50/60 p-3 dark:border-indigo-800/40 dark:bg-indigo-900/20">
+                <div class="mb-2">
+                  <label class="mb-1 block text-[11px] font-medium text-slate-600 dark:text-navy-300">Tipo</label>
+                  <select v-model="newTriggerType" class="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-700 dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100">
+                    <option v-for="(label, type) in TRIGGER_TYPE_LABELS" :key="type" :value="type">{{ label }}</option>
+                  </select>
+                </div>
+                <div v-if="newTriggerType === 'WEBHOOK'" class="mb-2 space-y-2">
+                  <div>
+                    <label class="mb-1 block text-[11px] font-medium text-slate-600 dark:text-navy-300">Modo de execução</label>
+                    <div class="flex gap-4">
+                      <label class="flex cursor-pointer items-center gap-1.5">
+                        <input type="radio" v-model="newTriggerWebhookMode" value="ASYNC" class="accent-indigo-600" />
+                        <span class="text-[11px] text-slate-700 dark:text-navy-200">Assíncrono</span>
+                        <span class="text-[10px] text-slate-400">— 202 imediato</span>
+                      </label>
+                      <label class="flex cursor-pointer items-center gap-1.5">
+                        <input type="radio" v-model="newTriggerWebhookMode" value="SYNC" class="accent-indigo-600" />
+                        <span class="text-[11px] text-slate-700 dark:text-navy-200">Síncrono</span>
+                        <span class="text-[10px] text-slate-400">— aguarda nó Return</span>
+                      </label>
+                    </div>
+                  </div>
+                  <div>
+                    <label class="mb-1 block text-[11px] font-medium text-slate-600 dark:text-navy-300">Payload de exemplo <span class="text-slate-400 font-normal">(JSON)</span></label>
+                    <textarea
+                      v-model="newTriggerSamplePayload"
+                      rows="4"
+                      class="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 font-mono text-[11px] text-slate-700 dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100"
+                      placeholder='{"data": "exemplo", "number": "5511999999999"}'
+                    />
+                    <p class="mt-0.5 text-[10px] text-slate-400">As chaves deste JSON ficam disponíveis como variáveis no contexto dos nós.</p>
+                  </div>
+                </div>
+                <div v-if="newTriggerType === 'CRON'" class="mb-2">
+                  <label class="mb-1 block text-[11px] font-medium text-slate-600 dark:text-navy-300">Intervalo (minutos)</label>
+                  <input
+                    v-model="newTriggerConfig"
+                    type="text"
+                    class="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-mono dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100"
+                    placeholder='{"intervalMinutes": 60}'
+                  />
+                </div>
+                <div class="flex justify-end gap-2">
+                  <button class="rounded px-2 py-1 text-[11px] text-slate-500 hover:text-slate-700" type="button" @click="showAddTrigger = false">Cancelar</button>
+                  <button
+                    class="rounded-lg bg-indigo-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                    type="button"
+                    :disabled="triggerSaving"
+                    @click="createTrigger"
+                  >{{ triggerSaving ? 'Salvando...' : 'Salvar' }}</button>
+                </div>
+              </div>
+
+              <!-- Loading -->
+              <div v-if="triggersLoading" class="py-3 text-center text-[11px] text-slate-400">Carregando...</div>
+
+              <!-- Empty -->
+              <div v-else-if="!triggers.length && !showAddTrigger" class="rounded-lg border border-dashed border-slate-200 py-4 text-center dark:border-navy-600">
+                <p class="text-[11px] text-slate-400 dark:text-navy-400">Nenhum gatilho configurado.</p>
+              </div>
+
+              <!-- List -->
+              <div v-for="t in triggers" :key="t.id" class="flex items-start gap-2 rounded-lg border border-slate-100 bg-white px-3 py-2 dark:border-navy-600 dark:bg-navy-700">
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-1.5">
+                    <p class="text-[11px] font-medium text-slate-700 dark:text-navy-100">{{ TRIGGER_TYPE_LABELS[t.triggerType] ?? t.triggerType }}</p>
+                    <span v-if="t.triggerType === 'WEBHOOK'"
+                      class="rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide"
+                      :class="triggerWebhookMode(t) === 'SYNC'
+                        ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300'
+                        : 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300'"
+                    >{{ triggerWebhookMode(t) }}</span>
+                  </div>
+                  <div v-if="t.webhookToken" class="mt-1 flex items-center gap-1">
+                    <code class="min-w-0 flex-1 truncate rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500 dark:bg-navy-600 dark:text-navy-300">
+                      /api/v1/public/workflows/webhook/{{ t.webhookToken }}
+                    </code>
+                    <button
+                      class="shrink-0 rounded p-0.5 text-slate-400 transition hover:text-indigo-600 dark:hover:text-indigo-400"
+                      type="button"
+                      :title="copiedTriggerToken === t.webhookToken ? 'Copiado!' : 'Copiar URL'"
+                      @click="copyWebhookUrl(t.webhookToken!)"
+                    >
+                      <svg v-if="copiedTriggerToken !== t.webhookToken" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                      </svg>
+                      <svg v-else class="h-3.5 w-3.5 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                      </svg>
+                    </button>
+                  </div>
+                  <!-- Inline payload editor for WEBHOOK triggers -->
+                  <template v-if="t.triggerType === 'WEBHOOK'">
+                    <div v-if="editingPayloadId !== t.id" class="mt-1">
+                      <button
+                        class="text-[10px] text-indigo-500 hover:text-indigo-700 dark:text-indigo-400"
+                        type="button"
+                        @click="openPayloadEditor(t)"
+                      >Editar payload de exemplo</button>
+                    </div>
+                    <div v-else class="mt-1.5 space-y-1">
+                      <textarea
+                        v-model="editingPayloadJson"
+                        rows="4"
+                        class="w-full rounded border border-slate-200 bg-slate-50 px-2 py-1 font-mono text-[10px] text-slate-700 dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100"
+                        placeholder='{"data": "exemplo"}'
+                      />
+                      <div class="flex justify-end gap-2">
+                        <button class="rounded px-2 py-0.5 text-[10px] text-slate-500 hover:text-slate-700" type="button" @click="editingPayloadId = null">Cancelar</button>
+                        <button
+                          class="rounded bg-indigo-600 px-2 py-0.5 text-[10px] text-white hover:bg-indigo-700 disabled:opacity-50"
+                          type="button"
+                          :disabled="payloadSaving"
+                          @click="savePayload(t)"
+                        >{{ payloadSaving ? 'Salvando...' : 'Salvar' }}</button>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+                <span
+                  class="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold cursor-pointer"
+                  :class="t.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-slate-100 text-slate-500 dark:bg-navy-600 dark:text-navy-400'"
+                  @click="toggleTriggerStatus(t)"
+                >{{ t.status }}</span>
+                <button class="shrink-0 rounded p-0.5 text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20" type="button" @click="deleteTrigger(t.id)">
+                  <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
           <!-- Edge inspector -->
           <div
-            v-else-if="selectedEdge"
+            v-if="!selectedNode && selectedEdge"
             class="rounded-xl border border-slate-200/80 bg-white/95 shadow-lg backdrop-blur-sm dark:border-navy-600/80 dark:bg-navy-800/95"
           >
             <div class="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-navy-600">
@@ -2184,7 +2880,7 @@ onBeforeUnmount(() => {
 
           <!-- Empty inspector placeholder -->
           <div
-            v-else
+            v-if="!selectedNode && !selectedEdge"
             class="rounded-xl border border-dashed border-slate-200/80 bg-white/80 p-6 shadow-sm backdrop-blur-sm dark:border-navy-600/80 dark:bg-navy-800/80"
           >
             <div class="flex flex-col items-center gap-3 text-center">
@@ -2288,6 +2984,172 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
+      <!-- ───── INTEGRATIONS OVERLAY ───── -->
+      <div
+        v-if="activeTab === 'integracoes'"
+        class="absolute inset-x-0 bottom-0 top-[60px] z-20 overflow-auto bg-white/95 p-4 pt-3 backdrop-blur-sm dark:bg-navy-800/95"
+      >
+        <div class="mx-auto max-w-2xl">
+          <div class="mb-4 flex items-center justify-between">
+            <h2 class="text-sm font-semibold text-slate-700 dark:text-navy-100">Integrações externas</h2>
+            <div class="flex items-center gap-2">
+              <button
+                class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition hover:border-slate-400 dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100"
+                type="button"
+                :disabled="integrationsLoading"
+                @click="loadIntegrations"
+              >Atualizar</button>
+              <button
+                class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition hover:bg-indigo-700"
+                type="button"
+                @click="openAddIntegration"
+              >
+                <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                Adicionar
+              </button>
+            </div>
+          </div>
+
+          <div v-if="integrationsLoading" class="flex items-center justify-center py-12">
+            <svg class="h-6 w-6 animate-spin text-indigo-500" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+            </svg>
+          </div>
+
+          <div v-else-if="!integrations.length" class="rounded-xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center dark:border-navy-600 dark:bg-navy-800/30">
+            <p class="text-sm text-slate-400 dark:text-navy-400">Nenhuma configuração de integração. Clique em Adicionar para criar a primeira.</p>
+          </div>
+
+          <div v-else class="space-y-2">
+            <div
+              v-for="cfg in integrations"
+              :key="cfg.id"
+              class="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-navy-600 dark:bg-navy-700"
+            >
+              <!-- Provider badge -->
+              <span class="shrink-0 rounded-md bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400">
+                {{ integrationProviders.find(p => p.provider === cfg.provider)?.label ?? cfg.provider }}
+              </span>
+              <!-- Name -->
+              <span class="min-w-0 flex-1 truncate text-sm font-medium text-slate-800 dark:text-navy-100">{{ cfg.name }}</span>
+              <!-- Token indicator -->
+              <span v-if="cfg.hasToken" class="shrink-0 text-[11px] text-emerald-600 dark:text-emerald-400">✓ Token</span>
+              <!-- Status badge -->
+              <span
+                class="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                :class="{
+                  'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400': cfg.status === 'ACTIVE',
+                  'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400': cfg.status === 'DISABLED',
+                  'bg-slate-100 text-slate-500 dark:bg-navy-600 dark:text-navy-300': cfg.status !== 'ACTIVE' && cfg.status !== 'DISABLED',
+                }"
+              >{{ cfg.status }}</span>
+              <!-- Actions -->
+              <button
+                class="shrink-0 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-600 transition hover:border-slate-300 dark:border-navy-500 dark:bg-navy-600 dark:text-navy-200"
+                type="button"
+                @click="openEditIntegration(cfg)"
+              >Editar</button>
+              <button
+                class="shrink-0 rounded-lg border border-red-200 bg-white px-2.5 py-1 text-xs text-red-500 transition hover:bg-red-50 dark:border-red-800 dark:bg-navy-600 dark:text-red-400"
+                type="button"
+                @click="deleteIntegration(cfg.id)"
+              >Remover</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Add/Edit modal -->
+        <div
+          v-if="integrationModal.open"
+          class="absolute inset-0 z-30 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+          @click.self="integrationModal.open = false"
+        >
+          <div class="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-navy-600 dark:bg-navy-700">
+            <!-- Step 1: pick provider -->
+            <template v-if="integrationModal.mode === 'add-pick'">
+              <h3 class="mb-4 text-base font-semibold text-slate-800 dark:text-navy-50">Selecionar provedor</h3>
+              <div v-if="!integrationProviders.length" class="py-6 text-center text-sm text-slate-400">Nenhum provedor disponível.</div>
+              <div class="space-y-2">
+                <button
+                  v-for="p in integrationProviders"
+                  :key="p.provider"
+                  class="flex w-full items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-left transition hover:border-indigo-300 hover:bg-indigo-50 dark:border-navy-500 dark:bg-navy-600 dark:hover:border-indigo-600"
+                  type="button"
+                  @click="pickProvider(p.provider)"
+                >
+                  <div>
+                    <p class="text-sm font-medium text-slate-800 dark:text-navy-100">{{ p.label }}</p>
+                    <p v-if="p.hint" class="mt-0.5 text-[11px] text-slate-400 dark:text-navy-400">{{ p.hint }}</p>
+                  </div>
+                </button>
+              </div>
+              <div class="mt-4 flex justify-end">
+                <button class="rounded-lg border border-slate-300 px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-navy-500 dark:text-navy-300" @click="integrationModal.open = false">Cancelar</button>
+              </div>
+            </template>
+
+            <!-- Step 2: fill form -->
+            <template v-else-if="integrationModal.mode === 'form'">
+              <h3 class="mb-4 text-base font-semibold text-slate-800 dark:text-navy-50">
+                {{ integrationModal.editingId ? 'Editar' : 'Nova' }} configuração —
+                {{ integrationProviders.find(p => p.provider === integrationModal.provider)?.label ?? integrationModal.provider }}
+              </h3>
+              <div class="space-y-3">
+                <!-- Name field (always shown) -->
+                <div>
+                  <label class="mb-1 block text-[11px] font-medium text-slate-600 dark:text-navy-300">Nome da conta <span class="text-red-400">*</span></label>
+                  <input
+                    v-model="integrationModal.form['name']"
+                    type="text"
+                    class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 shadow-sm dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100"
+                    placeholder="Ex: WhatsApp Vendas, WhatsApp Suporte..."
+                  />
+                </div>
+                <!-- Dynamic provider fields -->
+                <div
+                  v-for="field in integrationProviders.find(p => p.provider === integrationModal.provider)?.fields ?? []"
+                  :key="field.code"
+                >
+                  <label class="mb-1 block text-[11px] font-medium text-slate-600 dark:text-navy-300">
+                    {{ field.label }}<span v-if="field.required" class="ml-0.5 text-red-400">*</span>
+                  </label>
+                  <textarea
+                    v-if="field.type === 'textarea'"
+                    v-model="integrationModal.form[field.code]"
+                    class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 shadow-sm dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100"
+                    :placeholder="field.placeholder ?? ''"
+                    rows="3"
+                  />
+                  <input
+                    v-else
+                    v-model="integrationModal.form[field.code]"
+                    :type="field.type === 'password' ? 'password' : field.type === 'number' ? 'number' : 'text'"
+                    class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 shadow-sm dark:border-navy-500 dark:bg-navy-600 dark:text-navy-100"
+                    :placeholder="field.isToken && integrationModal.editingId ? 'Deixe em branco para manter o token atual' : (field.placeholder ?? '')"
+                  />
+                  <p v-if="field.hint" class="mt-0.5 text-[10px] text-slate-400 dark:text-navy-400">{{ field.hint }}</p>
+                </div>
+              </div>
+              <div class="mt-5 flex justify-end gap-2">
+                <button
+                  class="rounded-lg border border-slate-300 px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-navy-500 dark:text-navy-300"
+                  type="button"
+                  :disabled="integrationModal.saving"
+                  @click="integrationModal.open = false"
+                >Cancelar</button>
+                <button
+                  class="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-medium text-white transition hover:bg-indigo-700 disabled:opacity-50"
+                  type="button"
+                  :disabled="integrationModal.saving || !integrationModal.form['name']"
+                  @click="saveIntegrationModal"
+                >{{ integrationModal.saving ? 'Salvando...' : 'Salvar' }}</button>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+
       <!-- ───── CREATE DEFINITION MODAL ───── -->
       <div
         v-if="showCreateModal"
@@ -2327,6 +3189,7 @@ onBeforeUnmount(() => {
       v-model="showScriptEditor"
       :owner-type="selectedDefinition?.ownerType ?? 'ORDER'"
       :config-data="scriptEditorNode.configData"
+      :context-schema="scriptEditorContextSchema"
       @save="onScriptSave"
     />
   </DefaultLayout>

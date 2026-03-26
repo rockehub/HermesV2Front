@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { usePosStore } from '../../store/usePosStore'
 import { usePosApi } from '../../composables/usePosApi'
 
@@ -35,6 +35,14 @@ const billingAddress = ref({
 })
 
 const billingAddressSaved = ref(false)
+
+// Delivery must be fully configured (all splits with a selected shipping method)
+// before the operator can proceed to payment.
+const deliveryReady = computed(() => {
+  if (!posStore.hasItems) return true
+  const splits = posStore.deliveryShippingOptions
+  return splits.length > 0 && splits.every((s: any) => s.selectedProvider && s.selectedServiceCode)
+})
 
 function loadBillingFromStorage() {
   try {
@@ -131,7 +139,7 @@ watch(() => posStore.cart?.customerId, async (newId, oldId) => {
 })
 
 onMounted(async () => {
-  loadBillingFromStorage()
+  // loadBillingFromStorage()
   billingLoading.value = true
   try {
     const [methodsRes] = await Promise.all([
@@ -247,7 +255,21 @@ async function finalize() {
       </h3>
     </div>
 
-    <div class="flex-1 overflow-y-auto p-4 space-y-4 is-scrollbar-hidden">
+    <!-- Delivery gate: locked until all splits have a selected shipping method -->
+    <div
+      v-if="!deliveryReady && posStore.hasItems"
+      class="flex flex-1 flex-col items-center justify-center p-8 text-center"
+    >
+      <div class="flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 dark:bg-navy-700 mb-4">
+        <em class="fa-light fa-lock text-2xl text-slate-400 dark:text-navy-400"></em>
+      </div>
+      <p class="text-sm font-semibold text-slate-600 dark:text-navy-300">Pagamento bloqueado</p>
+      <p class="mt-1.5 text-xs text-slate-400 dark:text-navy-500 max-w-[200px]">
+        Selecione o método de entrega no painel ao lado para liberar o pagamento.
+      </p>
+    </div>
+
+    <div v-else class="flex-1 overflow-y-auto p-4 space-y-4 is-scrollbar-hidden">
 
       <!-- Success banner after checkout -->
       <div v-if="lastOrderRef" class="rounded-lg bg-success/10 border border-success/20 px-4 py-3 text-center">
@@ -501,7 +523,7 @@ async function finalize() {
         :class="posStore.canCheckout
           ? 'bg-success text-white hover:bg-success/90 active:scale-95 shadow-lg shadow-success/20'
           : 'bg-slate-100 dark:bg-navy-700 text-slate-400 dark:text-navy-400 cursor-not-allowed'"
-        :disabled="!posStore.canCheckout || posStore.isCheckingOut"
+        :disabled="!posStore.canCheckout || posStore.isCheckingOut || !deliveryReady"
         @click="finalize"
       >
         <em v-if="posStore.isCheckingOut" class="fa-duotone fa-spinner-third fa-spin"></em>

@@ -2,7 +2,8 @@
   <div id="root" class="min-h-100vh flex grow bg-slate-50 dark:bg-navy-900">
     <div class="fixed top-0 hidden p-6 lg:block lg:px-12">
       <a href="#" class="flex items-center space-x-2">
-        <img class="w-28" src="@/assets/images/brand/logo.png" alt="logo" />
+        <img v-show="!darkMode.isDarkMode" class="w-16" src="@/assets/images/brand/logo-dark.png" alt="logo" />
+        <img v-show="darkMode.isDarkMode" class="w-16" src="@/assets/images/brand/logo-light.png" alt="logo" />
         <p class="text-xl font-semibold uppercase text-slate-700 dark:text-navy-100">havix</p>
       </a>
     </div>

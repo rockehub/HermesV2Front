@@ -91,7 +91,7 @@ export const usePosStore = defineStore('pos', () => {
   const isCheckingOut = ref(false)
   const lastOrder = ref<any | null>(null)
   const error = ref<string | null>(null)
-  const deliveryMode = ref<'pickup' | 'delivery'>('pickup')
+  const deliveryMode = ref<'pickup' | 'delivery'>('delivery')
   const shippingMethods = ref<any[]>([])
   const deliveryShippingOptions = ref<DeliveryShippingOptionsSplit[]>([])
   const customerAddresses = ref<any[]>([])
@@ -224,7 +224,7 @@ export const usePosStore = defineStore('pos', () => {
     customer.value = null
     lastOrder.value = null
     error.value = null
-    deliveryMode.value = 'pickup'
+    deliveryMode.value = 'delivery'
     shippingMethods.value = []
     deliveryShippingOptions.value = []
     customerAddresses.value = []

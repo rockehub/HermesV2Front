@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { $axios } from '@/helpers/integration/integration'
+import { useGlobalState } from '@/stores/stores'
 
 const plans = ref<any[]>([])
+const darkMode = useGlobalState()
 
 onMounted(async () => {
   const response = await $axios.get('/api/v1/public/plans')
@@ -14,7 +16,8 @@ onMounted(async () => {
   <div class="min-h-100vh flex grow flex-col bg-slate-50 dark:bg-navy-900">
     <header class="flex items-center justify-between px-6 py-5 lg:px-12">
       <a href="#" class="flex items-center gap-2">
-        <img class="h-10 w-10" src="@/assets/images/brand/logo.png" alt="logo" />
+        <img v-show="!darkMode.isDarkMode" class="w-10" src="@/assets/images/brand/logo-dark.png" alt="logo" />
+        <img v-show="darkMode.isDarkMode" class="w-10" src="@/assets/images/brand/logo-light.png" alt="logo" />
         <span class="text-lg font-semibold uppercase text-slate-700 dark:text-navy-100">havix</span>
       </a>
       <router-link

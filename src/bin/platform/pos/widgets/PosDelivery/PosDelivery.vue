@@ -111,18 +111,13 @@ function isSelected(split: any, opt: any) {
 
 // ------------------------------------------------------------------ actions
 
-async function onModeChange() {
-  if (posStore.deliveryMode === 'pickup') {
-    addressSaved.value = false
-    showNewAddressForm.value = false
-  } else {
-    await loadCustomerAddresses()
-    if (!hasCustomerAddresses.value) {
-      showNewAddressForm.value = true
-    }
-    if (splits.value.length > 0) {
-      addressSaved.value = true
-    }
+async function initDelivery() {
+  await loadCustomerAddresses()
+  if (!hasCustomerAddresses.value) {
+    showNewAddressForm.value = true
+  }
+  if (splits.value.length > 0) {
+    addressSaved.value = true
   }
 }
 
@@ -281,20 +276,18 @@ function loadShippingFromStorage() {
 }
 
 onMounted(async () => {
-  loadShippingFromStorage()
-  if (splits.value.length > 0) {
-    posStore.deliveryMode = 'delivery'
-    addressSaved.value = true
-  }
+  // loadShippingFromStorage()
+  posStore.deliveryMode = 'delivery'
+  await initDelivery()
   ensureSelectedDateState()
 })
 
 // Reset widget state when a new sale starts, but keep last address in form
 watch(() => posStore.cartId, () => {
-  posStore.deliveryMode = 'pickup'
+  posStore.deliveryMode = 'delivery'
   addressSaved.value = false
   showNewAddressForm.value = false
-  loadShippingFromStorage()
+  // loadShippingFromStorage()
 })
 
 // Reload customer addresses when customer changes
@@ -333,42 +326,6 @@ watch(splits, () => {
     </div>
 
     <div class="flex-1 overflow-y-auto p-4 space-y-4 is-scrollbar-hidden">
-
-      <!-- Delivery mode toggle -->
-      <div class="grid grid-cols-2 gap-2">
-        <button
-          class="rounded-lg border px-3 py-2.5 text-xs font-medium transition-all flex items-center justify-center gap-2"
-          :class="posStore.deliveryMode === 'pickup'
-            ? 'border-primary bg-primary/10 text-primary'
-            : 'border-slate-200 dark:border-navy-600 text-slate-600 dark:text-navy-300 hover:border-primary/40'"
-          @click="posStore.deliveryMode = 'pickup'; onModeChange()"
-        >
-          <em class="fa-light fa-store"></em>
-          Retirada na loja
-        </button>
-        <button
-          class="rounded-lg border px-3 py-2.5 text-xs font-medium transition-all flex items-center justify-center gap-2"
-          :class="posStore.deliveryMode === 'delivery'
-            ? 'border-primary bg-primary/10 text-primary'
-            : 'border-slate-200 dark:border-navy-600 text-slate-600 dark:text-navy-300 hover:border-primary/40'"
-          @click="posStore.deliveryMode = 'delivery'; onModeChange()"
-        >
-          <em class="fa-light fa-truck"></em>
-          Entrega
-        </button>
-      </div>
-
-      <!-- Pickup confirmation -->
-      <div v-if="posStore.deliveryMode === 'pickup'"
-           class="rounded-lg bg-slate-50 dark:bg-navy-700 px-4 py-3 text-center">
-        <em class="fa-light fa-store text-xl text-slate-400 mb-1 block"></em>
-        <p class="text-xs text-slate-500 dark:text-navy-400">
-          Cliente retira na loja — sem frete
-        </p>
-      </div>
-
-      <!-- Delivery flow -->
-      <template v-else>
 
         <!-- Step 1: Address -->
         <div v-if="!addressSaved" class="space-y-3">
@@ -648,7 +605,6 @@ watch(splits, () => {
           </template>
         </div>
 
-      </template>
     </div>
   </div>
 </template>
